@@ -1,6 +1,7 @@
 _target_: data.OrthoDocRx
 _args_:
   - ./ortho_mm
+max_study_images: 8
 image_transform:
   _target_: albumentations.Compose
   _args_:
