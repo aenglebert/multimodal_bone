@@ -1,0 +1,14 @@
+defaults:
+  - training_args: default
+  - dataset: paired_xrays
+  - vision_model: biomed_vit
+  - text_model: dr_bert
+  - vlp_model: pooled_vlp
+  - _self_
+
+seed: 12345
+test_size: 0.1
+num_proc: 16
+project_name: "ortho_vlp"
+debug: False
+

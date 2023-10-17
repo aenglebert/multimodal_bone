@@ -1,0 +1,1 @@
+from .modeling_pooled_vision_text_dual_encoder import PooledVisionTextDualEncoderModel
