@@ -8,6 +8,8 @@ from omegaconf import DictConfig
 
 from transformers import Trainer
 
+from accelerate.state import DistributedType
+
 import os
 from pathlib import Path
 
@@ -62,9 +64,12 @@ def main(cfg: DictConfig):
     # Instantiate the training arguments
     training_args = instantiate(cfg.training_args)
 
+    # set distributed_state manually
+    if "deepspeed" in cfg.training_args and cfg.training_args.deepspeed:
+        training_args.distributed_state.distributed_type = DistributedType.DEEPSPEED
+
     # Instantiate the model
     model = instantiate(cfg.vlp_model, vision_model=image_encoder, text_model=text_encoder)
-    print(model.config)
 
     # Instantiate the trainer
     trainer = Trainer(model=model,
