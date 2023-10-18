@@ -29,7 +29,8 @@ class OrthoDocRx(Dataset):
             self.image_transform = image_transform
 
         if doc_embedding_npz is not None:
-            self.doc_embedding_npz = np.load(doc_embedding_npz)
+            with np.load(doc_embedding_npz) as f:
+                self.doc_embedding_npz = dict(zip(f['doc_id'], f['doc_embedding']))
         else:
             self.doc_embedding_npz = None
 
