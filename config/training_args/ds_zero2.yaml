@@ -1,12 +1,12 @@
 _target_: transformers.TrainingArguments
 output_dir: "checkpoints/"
 num_train_epochs: 1
-per_device_train_batch_size: 4
+per_device_train_batch_size: 8
 per_device_eval_batch_size: 4
 gradient_accumulation_steps: 10
 learning_rate: 0.0002
-warmup_steps: 100
-weight_decay: 0.1
+warmup_steps: 10
+weight_decay: 0.01
 adam_beta1: 0.9
 adam_beta2: 0.98
 adam_epsilon: 1e-6
@@ -17,5 +17,6 @@ logging_strategy: "steps"
 logging_steps: ${logging_steps}
 fp16: True
 dataloader_num_workers: ${num_proc}
-run_name: "vlp_default"
+run_name: "vlp_ds_zero2"
 report_to: "wandb"
+deepspeed: "ds_zero2.json"

@@ -12,3 +12,4 @@ num_proc: 16
 project_name: "ortho_vlp"
 debug: False
 
+logging_steps: 100
