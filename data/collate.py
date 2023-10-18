@@ -34,9 +34,23 @@ class StudyCollator:
         text_list = []
         images = []
         seq_sizes = []
+        doc_embedding_list = []
 
-        for text, image_list in batch:
+        for item in batch:
+            if len(item) == 2:
+                text, image_list = item
+                doc_embedding = None
+            elif len(item) == 3:
+                text, image_list, doc_embedding = item
+                if return_tensors == "pt":
+                    doc_embedding = torch.tensor(doc_embedding)
+            else:
+                raise ValueError("Batch item must be a tuple of 2 or 3 elements")
+
             seq_sizes.append(len(image_list))
+
+            if doc_embedding is not None:
+                doc_embedding_list.append(doc_embedding)
 
             for image in image_list:
                 images.append(image)
@@ -45,6 +59,11 @@ class StudyCollator:
 
         # Merge images (from list of 3D tensor to 4D tensor).
         images = torch.stack(images, 0)
+
+        if len(doc_embedding_list) == len(text_list):
+            doc_embeddings = torch.stack(doc_embedding_list, 0)
+        else:
+            doc_embeddings = None
 
         # Tokenizer texts
         texts = self.tokenizer(text_list,
@@ -65,4 +84,5 @@ class StudyCollator:
             **texts,
             "pixel_values": images,
             "seq_attr": seq_attr,
+            "doc_embeddings": doc_embeddings if doc_embeddings is not None else None,
         }

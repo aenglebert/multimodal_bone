@@ -1,3 +1,5 @@
+import numpy as np
+
 import torch
 from torch.utils.data import Dataset
 from pathlib import Path
@@ -14,7 +16,9 @@ class OrthoDocRx(Dataset):
                  image_transform=None,
                  text_tokenizer=None,
                  max_study_images=10,
-                ):
+                 doc_embedding_npz=None,
+                 ):
+        super().__init__()
         self.data_dir = Path(data_dir)
         self.image_dir = self.data_dir / "image_files"
         self.text_dir = self.data_dir / "text_files"
@@ -23,6 +27,11 @@ class OrthoDocRx(Dataset):
             self.image_transform = ToTensorV2()
         else:
             self.image_transform = image_transform
+
+        if doc_embedding_npz is not None:
+            self.doc_embedding_npz = np.load(doc_embedding_npz)
+        else:
+            self.doc_embedding_npz = None
 
         self.text_tokenizer = text_tokenizer
         self.max_study_images = max_study_images
@@ -33,7 +42,7 @@ class OrthoDocRx(Dataset):
         return len(self.studies)
 
     def __getitem__(self,
-                     idx,
+                    idx,
                     ):
         study = self.studies.loc[idx]
 
@@ -54,5 +63,9 @@ class OrthoDocRx(Dataset):
 
         if self.text_tokenizer is not None:
             text = self.text_tokenizer(text)
+
+        if self.doc_embedding_npz is not None:
+            doc_embedding = self.doc_embedding_npz[study.doc_id]
+            return text, image_list, doc_embedding
 
         return text, image_list

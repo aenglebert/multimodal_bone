@@ -113,7 +113,7 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
             output_attentions=None,
             output_hidden_states=None,
             return_dict=None,
-            **kwargs,
+            **kwargs
     ):
         r"""
         Returns:
@@ -182,6 +182,8 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
             output_attentions: Optional[bool] = None,
             output_hidden_states: Optional[bool] = None,
             return_dict: Optional[bool] = None,
+            doc_embeddings: Optional[torch.FloatTensor] = None,
+            **kwargs,
     ) -> Union[Tuple[torch.Tensor], OrthoOutput]:
         return_dict = return_dict if return_dict is not None else self.config.return_dict
 
