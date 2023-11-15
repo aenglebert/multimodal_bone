@@ -27,7 +27,6 @@ class StudyCollator:
             images: torch tensor of shape (total_images_nb, 3, w, h).
             seq_attr: tensor of size (num_texts, num_images) that map the images to the corresponding text
         """
-
         if return_tensors is None:
             return_tensors = self.return_tensors
 

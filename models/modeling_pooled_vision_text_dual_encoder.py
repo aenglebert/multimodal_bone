@@ -226,7 +226,6 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
             print("logits_per_image", logits_per_image)
             print("logit_scale", logit_scale)
 
-
         if not return_dict:
             return loss, logits_per_image, logits_per_text, text_embeds, image_embeds, text_outputs, vision_outputs
 

@@ -6,14 +6,22 @@ import hydra
 from hydra.utils import instantiate
 from omegaconf import DictConfig
 
+from torch.utils.data import DataLoader
+
 from transformers import Trainer
+from transformers.trainer_utils import seed_worker
+from transformers.utils import is_datasets_available
+
+import datasets
 
 from accelerate.state import DistributedType
+
+import webdataset as wds
 
 import os
 from pathlib import Path
 
-from data import StudyCollator
+from data import StudyCollator, BatchedWebLoaderLen
 
 # Try to import lovely_tensors
 try:
@@ -31,6 +39,50 @@ def seed_everything(seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+
+class CustomTrainer(Trainer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def get_train_dataloader(self):
+        """
+               Returns the training [`~torch.utils.data.DataLoader`].
+
+               Will use no sampler if `train_dataset` does not implement `__len__`, a random sampler (adapted to distributed
+               training if necessary) otherwise.
+
+               Subclass and override this method if you want to inject some custom behavior.
+               """
+        if self.train_dataset is None:
+            raise ValueError("Trainer: training requires a train_dataset.")
+
+        train_dataset = self.train_dataset
+        data_collator = self.data_collator
+        if is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
+            train_dataset = self._remove_unused_columns(train_dataset, description="training")
+        else:
+            data_collator = self._get_collator_with_removed_columns(data_collator, description="training")
+
+        dataloader_params = {
+            "batch_size": self._train_batch_size,
+            "collate_fn": data_collator,
+            "num_workers": self.args.dataloader_num_workers,
+            "pin_memory": self.args.dataloader_pin_memory,
+        }
+
+        if not isinstance(train_dataset, torch.utils.data.IterableDataset):
+            dataloader_params["sampler"] = self._get_train_sampler()
+            dataloader_params["drop_last"] = self.args.dataloader_drop_last
+            dataloader_params["worker_init_fn"] = seed_worker
+
+        if isinstance(train_dataset, wds.compat.WebDataset):
+            dataloader_params["collate_fn"] = lambda x: x
+            dataloader = self.accelerator.prepare(
+                BatchedWebLoaderLen(train_dataset.batched(self._train_batch_size, collation_fn=data_collator), **dataloader_params))
+            return dataloader
+
+        return self.accelerator.prepare(DataLoader(train_dataset, **dataloader_params))
 
 
 @hydra.main(version_base="1.3", config_path="config", config_name="train")
@@ -72,7 +124,7 @@ def main(cfg: DictConfig):
     model = instantiate(cfg.vlp_model, vision_model=image_encoder, text_model=text_encoder)
 
     # Instantiate the trainer
-    trainer = Trainer(model=model,
+    trainer = CustomTrainer(model=model,
                       args=training_args,
                       train_dataset=dataset,
                       #eval_dataset=tokenized_dataset["test"],
