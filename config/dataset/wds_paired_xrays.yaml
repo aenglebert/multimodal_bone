@@ -1,7 +1,7 @@
 _target_: data.create_wds_ortho_docs_rx
 _args_:
   - ./ortho_mm
-max_study_images: 8
+max_study_images: 4
 length: 219675
 image_transform:
   _target_: albumentations.Compose
