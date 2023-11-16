@@ -33,6 +33,7 @@ class StudyCollator:
         text_list = []
         images = []
         seq_sizes = []
+        images_list_of_list = []
         doc_embedding_list = []
 
         for item in batch:
@@ -46,18 +47,27 @@ class StudyCollator:
             else:
                 raise ValueError("Batch item must be a tuple of 2 or 3 elements")
 
+            images_list_of_list.append(image_list)
             seq_sizes.append(len(image_list))
 
             if doc_embedding is not None:
                 doc_embedding_list.append(doc_embedding)
 
-            for image in image_list:
-                images.append(image)
-
             text_list.append(text)
 
-        # Merge images (from list of 3D tensor to 4D tensor).
-        images = torch.stack(images, 0)
+        # Get max image sequence length
+        max_seq_size = max(seq_sizes)
+
+        # Get shape of an image
+        image_shape = images_list_of_list[0][0].shape
+
+        # Create a placeholder tensor for images
+        images = torch.zeros((len(seq_sizes), max_seq_size, image_shape[0], image_shape[1], image_shape[2]))
+
+        # Fill the placeholder tensor with images
+        for idx_x, image_list in enumerate(images_list_of_list):
+            for idx_y, image in enumerate(image_list):
+                images[idx_x, idx_y] = image
 
         if len(doc_embedding_list) == len(text_list):
             doc_embeddings = torch.stack(doc_embedding_list, 0)

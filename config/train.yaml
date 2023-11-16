@@ -1,7 +1,7 @@
 defaults:
   - training_args: default
   - dataset: paired_xrays
-  - vision_model: biomed_vit
+  - vision_model: biomed_seqvit
   - text_model: dr_bert
   - vlp_model: pooled_vlp
   - _self_

@@ -189,9 +189,7 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
 
         vision_outputs = self.vision_model(pixel_values)
         pooled_output = vision_outputs[1]  # pooled_output
-        image_features = self.visual_projection(pooled_output)
-
-        image_embeds = (seq_attr @ image_features) / seq_attr.sum(-1, keepdim=True)
+        image_embeds = self.visual_projection(pooled_output)
 
         text_outputs = self.text_model(
             input_ids=input_ids,
