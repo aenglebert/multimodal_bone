@@ -142,8 +142,12 @@ def main(cfg: DictConfig):
     output_path.mkdir(parents=True, exist_ok=True)
     timedate = time.strftime("%Y-%m-%d_%H-%M-%S")
     output_path = output_path / "_".join([cfg.project_name, timedate])
+    vision_encoder_path = output_path / "vision_encoder"
+    text_encoder_path = output_path / "text_encoder"
 
-    model.save_pretrained(output_path)
+    model.visual_model.save_pretrained(vision_encoder_path)
+    model.text_model.save_pretrained(text_encoder_path)
+    tokenizer.save_pretrained(text_encoder_path)
 
 
 if __name__ == "__main__":
