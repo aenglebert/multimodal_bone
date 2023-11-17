@@ -13,6 +13,19 @@ from transformers import AutoModel
 from .configuration_pooled_vision_text_dual_encoder import PooledVisionTextDualEncoderConfig
 
 
+class SigLIPLoss(nn.Module):
+    def __init__(self, temperature: float = 10.0, bias: float = -10.0):
+        super().__init__()
+        self.temperature = nn.Parameter(torch.tensor(temperature))
+        self.bias = nn.Parameter(torch.tensor(bias))
+
+    def forward(self, similarity: torch.Tensor) -> torch.Tensor:
+        logits = similarity * self.temperature + self.bias
+        n = len(logits)
+        labels = 2 * torch.eye(n, device=logits.device) - 1
+        return -torch.sum(nn.functional.logsigmoid(labels * logits)) / n
+
+
 def contrastive_loss(logits: torch.Tensor) -> torch.Tensor:
     return nn.functional.cross_entropy(logits, torch.arange(len(logits), device=logits.device))
 
@@ -103,6 +116,13 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
         self.visual_projection = nn.Linear(self.vision_embed_dim, self.projection_dim, bias=False)
         self.text_projection = nn.Linear(self.text_embed_dim, self.projection_dim, bias=False)
         self.logit_scale = nn.Parameter(torch.tensor(self.config.logit_scale_init_value))
+
+        if config.loss_type == "siglip":
+            self.loss = SigLIPLoss()
+        elif config.loss_type == "clip":
+            self.loss = clip_loss
+        else:
+            raise ValueError(f"Unknown loss type: {config.loss_type}, expected one of ['siglip', 'clip']")
 
     def get_text_features(
             self,
@@ -213,12 +233,11 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
         logits_per_text = torch.matmul(text_embeds, image_embeds.t()) * logit_scale
         logits_per_image = logits_per_text.T
 
-        loss = clip_loss(logits_per_text)
+        loss = self.loss(logits_per_text)
         if not loss > 0:
             print("loss", loss)
             print("text_embeds", text_embeds)
             print("image_embeds", image_embeds)
-            print("image_features", image_features)
             print("seq_attr", seq_attr.p)
             print("logits_per_text", logits_per_text)
             print("logits_per_image", logits_per_image)

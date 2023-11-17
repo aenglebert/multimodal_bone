@@ -2,7 +2,11 @@ from transformers.configuration_utils import PretrainedConfig
 
 
 class PooledVisionTextDualEncoderConfig(PretrainedConfig):
-    def __init__(self, projection_dim=512, logit_scale_init_value=2.6592, **kwargs):
+    def __init__(self,
+                 projection_dim=512,
+                 logit_scale_init_value=2.6592,
+                 loss_type="siglip",
+                 **kwargs):
         super().__init__(**kwargs)
 
         if "vision_config" not in kwargs:
@@ -25,6 +29,8 @@ class PooledVisionTextDualEncoderConfig(PretrainedConfig):
 
         self.projection_dim = projection_dim
         self.logit_scale_init_value = logit_scale_init_value
+
+        self.loss_type = loss_type
 
     @classmethod
     def from_vision_text_configs(cls, vision_config: PretrainedConfig, text_config: PretrainedConfig, **kwargs):
