@@ -18,16 +18,12 @@ class PooledVisionTextDualEncoderConfig(PretrainedConfig):
         vision_config = kwargs.pop("vision_config")
         text_config = kwargs.pop("text_config")
 
-        vision_model_type = vision_config.model_type
-        text_model_type = text_config.model_type
-
         self.vision_config = vision_config
 
         self.text_config = text_config
 
         self.is_composition = True
 
-        self.projection_dim = projection_dim
         self.logit_scale_init_value = logit_scale_init_value
 
         self.loss_type = loss_type

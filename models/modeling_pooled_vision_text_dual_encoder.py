@@ -49,9 +49,9 @@ class OrthoOutput(ModelOutput):
             The scaled dot product scores between `text_embeds` and `image_embeds`. This represents the text-image
             similarity scores.
         text_embeds(`torch.FloatTensor` of shape `(batch_size, output_dim`):
-            The text embeddings obtained by applying the projection layer to the pooled output of [`CLIPTextModel`].
+            The text embeddings obtained from the text model.
         image_embeds(`torch.FloatTensor` of shape `(batch_size, output_dim`):
-            The image embeddings obtained by applying the projection layer to the pooled output of [`CLIPVisionModel`].
+            The image embeddings obtained from the vision model.
         text_model_output(`BaseModelOutputWithPooling`):
             The output of the [`CLIPTextModel`].
         vision_model_output(`BaseModelOutputWithPooling`):
@@ -111,10 +111,7 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
 
         self.vision_embed_dim = config.vision_config.hidden_size
         self.text_embed_dim = config.text_config.hidden_size
-        self.projection_dim = config.projection_dim
 
-        self.visual_projection = nn.Linear(self.vision_embed_dim, self.projection_dim, bias=False)
-        self.text_projection = nn.Linear(self.text_embed_dim, self.projection_dim, bias=False)
         self.logit_scale = nn.Parameter(torch.tensor(self.config.logit_scale_init_value))
 
         if config.loss_type == "siglip":
@@ -137,8 +134,8 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
     ):
         r"""
         Returns:
-            text_features (`torch.FloatTensor` of shape `(batch_size, output_dim`): The text embeddings obtained by
-            applying the projection layer to the pooled output of [`CLIPTextModel`].
+            text_features (`torch.FloatTensor` of shape `(batch_size, output_dim`): The text embeddings obtained from
+            the text model.
 
         Examples:
 
@@ -161,8 +158,7 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
             return_dict=return_dict,
         )
 
-        pooled_output = text_outputs[1]
-        text_features = self.text_projection(pooled_output)
+        text_features = text_outputs[1]
 
         # text_features = text_outputs
         return text_features
@@ -175,21 +171,9 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
 
         vision_outputs = self.vision_model(pixel_values)
 
-        pooled_output = vision_outputs[1]  # pooled_output
-        image_features = self.visual_projection(pooled_output)
+        image_features = vision_outputs[1]  # pooled_output
 
         return image_features
-
-    def get_pooled_image_features(
-            self,
-            pixel_values=None,
-            seq_attr=None,
-            **kwargs,
-    ):
-        image_features = self.get_image_features(pixel_values)
-        mean_pool = (seq_attr @ image_features) / seq_attr.sum(-1, keepdim=True)
-
-        return mean_pool
 
     def forward(
             self,
@@ -208,8 +192,7 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
         return_dict = return_dict if return_dict is not None else self.config.return_dict
 
         vision_outputs = self.vision_model(pixel_values)
-        pooled_output = vision_outputs[1]  # pooled_output
-        image_embeds = self.visual_projection(pooled_output)
+        image_embeds = vision_outputs[1]  # pooled_output
 
         text_outputs = self.text_model(
             input_ids=input_ids,
@@ -221,8 +204,7 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
             return_dict=return_dict,
         )
 
-        pooled_output = text_outputs[1]
-        text_embeds = self.text_projection(pooled_output)
+        text_embeds = text_outputs[1]
 
         # normalized features
         image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
