@@ -13,3 +13,4 @@ project_name: "ortho_vlp"
 debug: False
 
 logging_steps: 100
+output_dir: "./output"

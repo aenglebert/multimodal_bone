@@ -23,6 +23,8 @@ from pathlib import Path
 
 from data import StudyCollator, BatchedWebLoaderLen
 
+import time
+
 # Try to import lovely_tensors
 try:
     import lovely_tensors as lt
@@ -135,10 +137,13 @@ def main(cfg: DictConfig):
     #trainer.train(resume_from_checkpoint=cfg.checkpoint.resume_from_checkpoint)
     trainer.train()
 
-    # Save the model
-#    checkpoint_path = Path(cfg.checkpoint.path)
-#    output_path = checkpoint_path.parent / "_".join([checkpoint_path.name] + cfg.dataset.path.split("/"))
-#    model.save_pretrained(output_path)
+    # Save the model in the output directory with the project name and current date and time
+    output_path = Path(cfg.output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    timedate = time.strftime("%Y-%m-%d_%H-%M-%S")
+    output_path = output_path / "_".join([cfg.project_name, timedate])
+
+    trainer.save_model(str(output_path))
 
 
 if __name__ == "__main__":
