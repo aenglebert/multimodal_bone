@@ -143,7 +143,7 @@ def main(cfg: DictConfig):
     timedate = time.strftime("%Y-%m-%d_%H-%M-%S")
     output_path = output_path / "_".join([cfg.project_name, timedate])
 
-    trainer.save_model(str(output_path))
+    model.save_pretrained(output_path)
 
 
 if __name__ == "__main__":
