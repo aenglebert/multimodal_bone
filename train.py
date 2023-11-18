@@ -139,13 +139,14 @@ def main(cfg: DictConfig):
 
     # Save the model in the output directory with the project name and current date and time
     output_path = Path(cfg.output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
     timedate = time.strftime("%Y-%m-%d_%H-%M-%S")
     output_path = output_path / "_".join([cfg.project_name, timedate])
     vision_encoder_path = output_path / "vision_encoder"
     text_encoder_path = output_path / "text_encoder"
+    vision_encoder_path.mkdir(parents=True)
+    text_encoder_path.mkdir(parents=True)
 
-    model.visual_model.save_pretrained(vision_encoder_path)
+    model.vision_model.save_pretrained(vision_encoder_path)
     model.text_model.save_pretrained(text_encoder_path)
     tokenizer.save_pretrained(text_encoder_path)
 
