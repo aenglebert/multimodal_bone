@@ -14,10 +14,10 @@ from .configuration_pooled_vision_text_dual_encoder import PooledVisionTextDualE
 
 
 class SigLIPLoss(nn.Module):
-    def __init__(self, temperature: float = 1.0, bias: float = 0.0):
+    def __init__(self, temperature: float = 10.0, bias: float = -10.0):
         super().__init__()
-        self.temperature = temperature
-        self.bias = bias
+        self.temperature = nn.Parameter(torch.tensor(temperature))
+        self.bias = nn.Parameter(torch.tensor(bias))
 
     def forward(self, similarity: torch.Tensor) -> torch.Tensor:
         logits = similarity * self.temperature + self.bias
