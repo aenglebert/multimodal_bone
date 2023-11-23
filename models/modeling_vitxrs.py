@@ -2,15 +2,18 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 import math
 
+from dataclasses import dataclass
+
 import torch
 import torch.nn as nn
 
 from transformers import ViTConfig, ViTModel
 from transformers.modeling_utils import PreTrainedModel
-from transformers.modeling_outputs import BaseModelOutputWithPooling, BaseModelOutput
+from transformers.modeling_outputs import BaseModelOutputWithPooling, BaseModelOutput, ModelOutput
 from transformers.configuration_utils import PretrainedConfig
 
 from transformers.models.vit.modeling_vit import ViTAttention, ViTIntermediate, ViTOutput, ViTEmbeddings, ViTPooler
+from transformers.models.vit_mae.modeling_vit_mae import ViTMAEEmbeddings
 
 from models.seq_vision_transformer import SeqVisionTransformer
 
@@ -26,6 +29,40 @@ class ViTXRSConfig(ViTConfig):
         self.num_cls_attention_heads = num_cls_attention_heads
         self.seq_model = True
         self.pooling = pooling
+        self.mask_ratio = 0
+
+
+@dataclass
+class ViTXRSModelOutput(ModelOutput):
+    """
+    Class for ViTXRSModel's outputs, with potential hidden states and attentions.
+
+    Args:
+        last_hidden_state (`torch.FloatTensor` of shape `(batch_size, token_sequence_length, hidden_size)`):
+            Sequence of hidden-states at the output of the last layer of the model.
+        grouped_last_hidden_state (`torch.FloatTensor` of shape `(batch_size, images_sequence_lenght, token_sequence_length, hidden_size)`):
+        pooler_output (`torch.FloatTensor` of shape `(batch_size, hidden_size)`):
+        mask (`torch.FloatTensor` of shape `(batch_size, sequence_length)`):
+            Tensor indicating which patches are masked (1) and which are not (0).
+        ids_restore (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
+            Tensor containing the original index of the (shuffled) masked patches.
+        hidden_states (`tuple(torch.FloatTensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
+            Tuple of `torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer) of
+            shape `(batch_size, sequence_length, hidden_size)`. Hidden-states of the model at the output of each layer
+            plus the initial embedding outputs.
+        attentions (`tuple(torch.FloatTensor)`, *optional*, returned when `output_attentions=True` is passed or when `config.output_attentions=True`):
+            Tuple of `torch.FloatTensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
+            sequence_length)`. Attentions weights after the attention softmax, used to compute the weighted average in
+            the self-attention heads.
+    """
+
+    last_hidden_state: torch.FloatTensor = None
+    pooler_output: torch.FloatTensor = None
+    grouped_last_hidden_state: torch.FloatTensor = None
+    mask: torch.LongTensor = None
+    ids_restore: torch.LongTensor = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 
 class ViTXRSPooler(nn.Module):
@@ -246,11 +283,11 @@ class ViTRXSEncoder(nn.Module):
 class ViTXRSModel(ViTModel):
     config_class = ViTXRSConfig
 
-    def __init__(self, config: ViTConfig, add_pooling_layer: bool = True, use_mask_token: bool = False):
+    def __init__(self, config: ViTConfig, add_pooling_layer: bool = True):
         super().__init__(config)
         self.config = config
 
-        self.embeddings = ViTEmbeddings(config, use_mask_token=use_mask_token)
+        self.embeddings = ViTMAEEmbeddings(config)
         self.encoder = ViTRXSEncoder(config)
 
         self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
@@ -262,18 +299,12 @@ class ViTXRSModel(ViTModel):
     def forward(
         self,
         pixel_values: Optional[torch.Tensor] = None,
-        bool_masked_pos: Optional[torch.BoolTensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        interpolate_pos_encoding: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, BaseModelOutputWithPooling]:
-        r"""
-        bool_masked_pos (`torch.BoolTensor` of shape `(batch_size, seq_len, num_patches)`,
-        or `torch.BoolTensor` of shape `(batch_size, num_patches)`, *optional*):
-            Boolean masked positions. Indicates which patches are masked (1) and which aren't (0).
-        """
+        **kwargs,
+    ) -> Union[Tuple, ViTXRSModelOutput]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -287,12 +318,6 @@ class ViTXRSModel(ViTModel):
             bs = pixel_values.shape[0]
             seq_len = pixel_values.shape[1]
             pixel_values = pixel_values.flatten(0, 1).contiguous()
-
-            if bool_masked_pos is not None:
-                assert bool_masked_pos.dim() == 3, f'bool_masked_pos must be 3D when pixel_values is a sequence of images' \
-                                                   f', got {bool_masked_pos.dim()}D'
-
-                bool_masked_pos = bool_masked_pos.flatten(0, 1).contiguous()
 
         elif pixel_values.dim() == 4:
             bs = pixel_values.shape[0]
@@ -312,9 +337,7 @@ class ViTXRSModel(ViTModel):
         if pixel_values.dtype != expected_dtype:
             pixel_values = pixel_values.to(expected_dtype)
 
-        embedding_output = self.embeddings(
-            pixel_values, bool_masked_pos=bool_masked_pos, interpolate_pos_encoding=interpolate_pos_encoding
-        )
+        embedding_output, mask, ids_restore = self.embeddings(pixel_values)
 
         encoder_outputs = self.encoder(
             embedding_output,
@@ -328,8 +351,8 @@ class ViTXRSModel(ViTModel):
         sequence_output = self.layernorm(sequence_output)
 
         if seq_len > 1:
-            sequence_output = sequence_output.view(bs, seq_len, sequence_output.shape[1], -1)
-            pooled_cls_token = sequence_output[:, :, 0].mean(1)
+            grouped_sequence_output = sequence_output.view(bs, seq_len, sequence_output.shape[1], -1)
+            pooled_cls_token = grouped_sequence_output[:, :, 0].mean(1)
 
         else:
             pooled_cls_token = sequence_output[:, 0]
@@ -340,9 +363,12 @@ class ViTXRSModel(ViTModel):
             head_outputs = (sequence_output, pooled_output) if pooled_output is not None else (sequence_output,)
             return head_outputs + encoder_outputs[1:]
 
-        return BaseModelOutputWithPooling(
+        return ViTXRSModelOutput(
             last_hidden_state=sequence_output,
+            grouped_last_hidden_state=grouped_sequence_output,
             pooler_output=pooled_output,
+            mask=mask,
+            ids_restore=ids_restore,
             hidden_states=encoder_outputs.hidden_states,
             attentions=encoder_outputs.attentions,
         )
