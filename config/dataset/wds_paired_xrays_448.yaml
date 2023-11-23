@@ -1,0 +1,28 @@
+_target_: data.create_wds_ortho_docs_rx
+_args_:
+  - ./ortho_mm
+max_study_images: 4
+length: 219675
+image_transform:
+  _target_: albumentations.Compose
+  _args_:
+    - - _target_: albumentations.Resize
+        height: 448
+        width: 448
+      - _target_: albumentations.HorizontalFlip
+        p: 0.5
+      - _target_: albumentations.RandomBrightnessContrast
+        brightness_limit: 0.2
+        contrast_limit: 0.2
+        p: 0.2
+      - _target_: albumentations.Normalize
+        mean:
+          - 0.48145466
+          - 0.4578275
+          - 0.40821073
+        std:
+          - 0.26862954
+          - 0.26130258
+          - 0.27577711
+        p: 1
+      - _target_: albumentations.pytorch.transforms.ToTensorV2

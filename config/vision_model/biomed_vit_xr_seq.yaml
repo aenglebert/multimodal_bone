@@ -1,0 +1,5 @@
+encoder:
+  _target_: transformers.AutoModel.from_pretrained
+  _args_:
+    - biomed_vit_xr_seq
+  trust_remote_code: true
