@@ -58,7 +58,6 @@ class ViTXRSModelOutput(ModelOutput):
 
     last_hidden_state: torch.FloatTensor = None
     pooler_output: torch.FloatTensor = None
-    grouped_last_hidden_state: torch.FloatTensor = None
     mask: torch.LongTensor = None
     ids_restore: torch.LongTensor = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
@@ -365,7 +364,6 @@ class ViTXRSModel(ViTModel):
 
         return ViTXRSModelOutput(
             last_hidden_state=sequence_output,
-            grouped_last_hidden_state=grouped_sequence_output,
             pooler_output=pooled_output,
             mask=mask,
             ids_restore=ids_restore,
