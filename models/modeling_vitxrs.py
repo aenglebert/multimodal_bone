@@ -23,6 +23,9 @@ AUTO_MAP = {
 
 
 class ViTXRSConfig(ViTConfig):
+
+    model_type = "vitxrs"
+
     def __init__(self, pooling="mean_cls_token", num_cls_attention_heads=2, **kwargs):
         super().__init__(**kwargs)
 
