@@ -175,7 +175,7 @@ def main(cfg: DictConfig):
     text_encoder = instantiate(cfg.text_model.encoder)
 
     # Instantiate the data collator
-    data_collator = StudyCollator(tokenizer=tokenizer)
+    data_collator = StudyCollator(tokenizer=tokenizer, mlm=(True if "lm_head" in dir(text_encoder) else False))
 
     # Instantiate the training arguments
     training_args = instantiate(cfg.training_args)

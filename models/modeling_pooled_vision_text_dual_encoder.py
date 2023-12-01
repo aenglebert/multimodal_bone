@@ -194,14 +194,21 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
         vision_outputs = self.vision_model(pixel_values, output_hidden_states=True)
         image_embeds = vision_outputs.pooler_output
 
+        text_inputs = {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "position_ids": position_ids,
+            "token_type_ids": token_type_ids,
+            "output_attentions": output_attentions,
+            "output_hidden_states": True,
+            "return_dict": return_dict,
+        }
+
+        if "labels" in kwargs:
+            text_inputs["labels"] = kwargs.pop("labels")
+
         text_outputs = self.text_model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            token_type_ids=token_type_ids,
-            output_attentions=output_attentions,
-            output_hidden_states=True,
-            return_dict=return_dict,
+            **text_inputs
         )
 
         text_cls = text_outputs.hidden_states[-1][:, 0, :]

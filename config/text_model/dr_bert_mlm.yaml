@@ -1,0 +1,9 @@
+encoder:
+  _target_: transformers.AutoModelForMaskedLM.from_pretrained
+  _args_:
+    - Dr-BERT/DrBERT-4GB
+
+tokenizer:
+  _target_: transformers.AutoTokenizer.from_pretrained
+  _args_:
+      - Dr-BERT/DrBERT-4GB

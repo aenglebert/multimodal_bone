@@ -1,5 +1,7 @@
 import torch
 
+from transformers import DataCollatorWithPadding, DataCollatorForLanguageModeling
+
 
 class StudyCollator:
     def __init__(self,
@@ -7,11 +9,31 @@ class StudyCollator:
                  pad_to_multiple_of=8,
                  return_tensors="pt",
                  padding="longest",
+                 mlm=False,
+                 mlm_probability=0.15,
                  ):
         self.tokenizer = tokenizer
         self.pad_to_multiple_of = pad_to_multiple_of
         self.return_tensors = return_tensors
         self.padding = padding
+
+        if mlm:
+            self.mlm = True
+            self.mlm_probability = mlm_probability
+            self.text_collator = DataCollatorForLanguageModeling(
+                tokenizer=tokenizer,
+                mlm_probability=mlm_probability,
+                pad_to_multiple_of=pad_to_multiple_of,
+                return_tensors=return_tensors,
+            )
+        else:
+            self.mlm = False
+            self.text_collator = DataCollatorWithPadding(
+                tokenizer=tokenizer,
+                pad_to_multiple_of=pad_to_multiple_of,
+                return_tensors=return_tensors,
+                padding=padding,
+            )
 
     def __call__(self, batch, return_tensors=None):
         """Creates mini-batch tensors from the list of tuples (text, list of images).
@@ -74,13 +96,7 @@ class StudyCollator:
         else:
             doc_embeddings = None
 
-        # Tokenizer texts
-        texts = self.tokenizer(text_list,
-                               padding=self.padding,
-                               return_tensors=return_tensors,
-                               pad_to_multiple_of=self.pad_to_multiple_of,
-                               truncation=True,
-                               )
+        texts = self.text_collator([self.tokenizer(text) for text in text_list])
 
         seq_attr = torch.zeros((len(seq_sizes), images.shape[0]))
 
