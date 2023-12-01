@@ -1,0 +1,6 @@
+encoder:
+  _target_: models.modeling_vitxrs.ViTXRSMAEForPreTraining.from_pretrained
+  _args_:
+    - biomed_vit_xr_seq
+  trust_remote_code: true
+  mask_ratio: 0.75
