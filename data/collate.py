@@ -96,7 +96,7 @@ class StudyCollator:
         else:
             doc_embeddings = None
 
-        texts = self.text_collator([self.tokenizer(text) for text in text_list])
+        texts = self.text_collator([self.tokenizer(text, truncation=True) for text in text_list])
 
         seq_attr = torch.zeros((len(seq_sizes), images.shape[0]))
 
