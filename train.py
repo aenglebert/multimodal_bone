@@ -16,6 +16,10 @@ import datasets
 
 from accelerate.state import DistributedType
 
+from transformers.utils import is_peft_available
+from transformers.modeling_utils import unwrap_model
+from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
+
 import webdataset as wds
 
 import os
@@ -34,6 +38,10 @@ except ModuleNotFoundError:
     # But not mandatory, pass if lovely tensor is not available
     pass
 
+# Try to import peft
+if is_peft_available():
+    from peft import PeftModel
+
 
 # Define a function to seed everything
 def seed_everything(seed):
@@ -46,6 +54,7 @@ def seed_everything(seed):
 class CustomTrainer(Trainer):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.loss_history = {}
 
     def get_train_dataloader(self):
         """
@@ -85,6 +94,59 @@ class CustomTrainer(Trainer):
             return dataloader
 
         return self.accelerator.prepare(DataLoader(train_dataset, **dataloader_params))
+
+    def compute_loss(self, model, inputs, return_outputs=False):
+        """
+        How the loss is computed by Trainer. By default, all models return the loss in the first element.
+
+        Subclass and override for custom behavior.
+        """
+        if self.label_smoother is not None and "labels" in inputs:
+            labels = inputs.pop("labels")
+        else:
+            labels = None
+        outputs = model(**inputs)
+
+        # Save past state if it exists
+        # TODO: this needs to be fixed and made cleaner later.
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+
+        if labels is not None:
+            if is_peft_available() and isinstance(model, PeftModel):
+                model_name = unwrap_model(model.base_model)._get_name()
+            else:
+                model_name = unwrap_model(model)._get_name()
+            if model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+                loss = self.label_smoother(outputs, labels, shift_labels=True)
+            else:
+                loss = self.label_smoother(outputs, labels)
+        else:
+            if isinstance(outputs, dict) and "loss" not in outputs:
+                raise ValueError(
+                    "The model did not return a loss from the inputs, only the following keys: "
+                    f"{','.join(outputs.keys())}. For reference, the inputs it received are {','.join(inputs.keys())}."
+                )
+
+        # Get the loss
+        loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+
+        # If multiple losses are returned, log them all and average them
+        if isinstance(loss, dict):
+            for key, value in loss.items():
+                if key not in self.loss_history:
+                    self.loss_history[key] = []
+                self.loss_history[key].append(value.item())
+
+                if self.state.global_step % self.args.logging_steps == 0 and \
+                        len(self.loss_history[key]) > self.args.gradient_accumulation_steps:
+                    mean_loss = np.mean(self.loss_history[key])
+                    self.log({key: mean_loss, "step": self.state.global_step})
+                    self.loss_history[key] = []
+
+            loss = sum(loss.values()) / len(loss)
+
+        return (loss, outputs) if return_outputs else loss
 
 
 @hydra.main(version_base="1.3", config_path="config", config_name="train")

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union, Dict
 
 import torch
 from torch import nn
@@ -40,7 +40,7 @@ def clip_loss(similarity: torch.Tensor) -> torch.Tensor:
 class OrthoOutput(ModelOutput):
     """
     Args:
-        loss (`torch.FloatTensor` of shape `(1,)`):
+        loss (`Dict(str, :obj:`torch.FloatTensor` of shape `(1,)`, `optional`):
             Contrastive loss for image-text similarity.
         logits_per_image:(`torch.FloatTensor` of shape `(image_batch_size, text_batch_size)`):
             The scaled dot product scores between `image_embeds` and `text_embeds`. This represents the image-text
@@ -58,7 +58,7 @@ class OrthoOutput(ModelOutput):
             The output of the [`CLIPVisionModel`].
     """
 
-    loss: Optional[torch.FloatTensor] = None
+    loss: Optional[Dict[str, torch.FloatTensor]] = None
     logits_per_image: torch.FloatTensor = None
     logits_per_text: torch.FloatTensor = None
     text_embeds: torch.FloatTensor = None
@@ -169,9 +169,9 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
             **kwargs,
     ):
 
-        vision_outputs = self.vision_model(pixel_values)
+        vision_outputs = self.vision_model(pixel_values, output_hidden_states=True)
 
-        image_features = vision_outputs[1]  # pooled_output
+        image_features = vision_outputs.pooler_output
 
         return image_features
 
@@ -191,8 +191,8 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
     ) -> Union[Tuple[torch.Tensor], OrthoOutput]:
         return_dict = return_dict if return_dict is not None else self.config.return_dict
 
-        vision_outputs = self.vision_model(pixel_values)
-        image_embeds = vision_outputs[1]  # pooled_output
+        vision_outputs = self.vision_model(pixel_values, output_hidden_states=True)
+        image_embeds = vision_outputs.pooler_output
 
         text_outputs = self.text_model(
             input_ids=input_ids,
@@ -200,39 +200,37 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
             position_ids=position_ids,
             token_type_ids=token_type_ids,
             output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
+            output_hidden_states=True,
             return_dict=return_dict,
         )
 
-        text_embeds = text_outputs[1]
+        text_cls = text_outputs.hidden_states[-1][:, 0, :]
 
         # normalized features
         image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
-        text_embeds = text_embeds / text_embeds.norm(dim=-1, keepdim=True)
+        text_cls = text_cls / text_cls.norm(dim=-1, keepdim=True)
 
         # cosine similarity as logits
         logit_scale = self.logit_scale.exp()
-        logits_per_text = torch.matmul(text_embeds, image_embeds.t()) * logit_scale
+        logits_per_text = torch.matmul(text_cls, image_embeds.t()) * logit_scale
         logits_per_image = logits_per_text.T
 
-        loss = self.loss(logits_per_text)
-        if not loss > 0:
-            print("loss", loss)
-            print("text_embeds", text_embeds)
-            print("image_embeds", image_embeds)
-            print("seq_attr", seq_attr.p)
-            print("logits_per_text", logits_per_text)
-            print("logits_per_image", logits_per_image)
-            print("logit_scale", logit_scale)
+        loss = {"contrastive_loss": self.loss(logits_per_text)}
+
+        if "loss" in vision_outputs.keys():
+            loss["vision_loss"] = vision_outputs.loss
+
+        if "loss" in text_outputs.keys():
+            loss["text_loss"] = text_outputs.loss
 
         if not return_dict:
-            return loss, logits_per_image, logits_per_text, text_embeds, image_embeds, text_outputs, vision_outputs
+            return loss, logits_per_image, logits_per_text, text_cls, image_embeds, text_outputs, vision_outputs
 
         return OrthoOutput(
             loss=loss,
             logits_per_image=logits_per_image,
             logits_per_text=logits_per_text,
-            text_embeds=text_embeds,
+            text_embeds=text_cls,
             image_embeds=image_embeds,
             text_model_output=text_outputs,
             vision_model_output=vision_outputs,
