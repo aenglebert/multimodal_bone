@@ -345,6 +345,7 @@ class ViTXRSModel(ViTModel):
     def forward(
         self,
         pixel_values: Optional[torch.Tensor] = None,
+        images_attention_mask: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
@@ -398,7 +399,8 @@ class ViTXRSModel(ViTModel):
 
         if seq_len > 1:
             grouped_sequence_output = sequence_output.view(bs, seq_len, sequence_output.shape[1], -1)
-            pooled_cls_token = grouped_sequence_output[:, :, 0].mean(1)
+            masked_cls_token = grouped_sequence_output[:, :, 0] * images_attention_mask.unsqueeze(-1)
+            pooled_cls_token = masked_cls_token.sum(1) / images_attention_mask.sum(-1).unsqueeze(-1)
 
         else:
             pooled_cls_token = sequence_output[:, 0]
@@ -546,6 +548,7 @@ class ViTXRSMAEForPreTraining(ViTXRSModel):
     def forward(
         self,
         pixel_values: Optional[torch.FloatTensor] = None,
+        images_attention_mask: Optional[torch.FloatTensor] = None,
         noise: Optional[torch.FloatTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
         output_attentions: Optional[bool] = None,
@@ -557,6 +560,7 @@ class ViTXRSMAEForPreTraining(ViTXRSModel):
 
         outputs = super().forward(
             pixel_values,
+            images_attention_mask=images_attention_mask,
             noise=noise,
             head_mask=head_mask,
             output_attentions=output_attentions,

@@ -86,10 +86,14 @@ class StudyCollator:
         # Create a placeholder tensor for images
         images = torch.zeros((len(seq_sizes), max_seq_size, image_shape[0], image_shape[1], image_shape[2]))
 
+        # Create a placeholder for images attention mask
+        images_attention_mask = torch.zeros((len(seq_sizes), max_seq_size))
+
         # Fill the placeholder tensor with images
         for idx_x, image_list in enumerate(images_list_of_list):
             for idx_y, image in enumerate(image_list):
                 images[idx_x, idx_y] = image
+                images_attention_mask[idx_x, idx_y] = 1
 
         if len(doc_embedding_list) == len(text_list):
             doc_embeddings = torch.stack(doc_embedding_list, 0)
@@ -108,6 +112,7 @@ class StudyCollator:
         return {
             **texts,
             "pixel_values": images,
+            "images_attention_mask": images_attention_mask,
             "seq_attr": seq_attr,
             "doc_embeddings": doc_embeddings if doc_embeddings is not None else None,
         }

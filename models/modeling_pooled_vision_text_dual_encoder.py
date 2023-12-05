@@ -179,6 +179,7 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
             self,
             input_ids: Optional[torch.LongTensor] = None,
             pixel_values: Optional[torch.FloatTensor] = None,
+            images_attention_mask: Optional[torch.FloatTensor] = None,
             seq_attr: Optional[torch.LongTensor] = None,
             attention_mask: Optional[torch.Tensor] = None,
             position_ids: Optional[torch.LongTensor] = None,
@@ -191,7 +192,7 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
     ) -> Union[Tuple[torch.Tensor], OrthoOutput]:
         return_dict = return_dict if return_dict is not None else self.config.return_dict
 
-        vision_outputs = self.vision_model(pixel_values, output_hidden_states=True)
+        vision_outputs = self.vision_model(pixel_values, images_attention_mask=images_attention_mask, output_hidden_states=True)
         image_embeds = vision_outputs.pooler_output
 
         text_inputs = {
