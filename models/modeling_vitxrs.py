@@ -151,7 +151,7 @@ class CLSSelfAttention(nn.Module):
         return x.permute(0, 2, 1, 3)
 
     def forward(
-        self, hidden_states, head_mask: Optional[torch.Tensor] = None, output_attentions: bool = False
+        self, hidden_states, attention_mask=None, head_mask: Optional[torch.Tensor] = None, output_attentions: bool = False
     ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
         mixed_query_layer = self.query(hidden_states)
 
@@ -161,6 +161,13 @@ class CLSSelfAttention(nn.Module):
 
         # Take the dot product between "query" and "key" to get the raw attention scores.
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+
+        # Apply mask
+        if attention_mask is not None:
+            mask = attention_mask[:, None, None, :]
+            mask = (1.0 - mask) * torch.finfo(mask.dtype).min
+
+            attention_scores = attention_scores + mask
 
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
 
@@ -197,6 +204,7 @@ class ViTXRSCLSAttention(nn.Module):
         self,
         hidden_states: torch.Tensor,
         seq_len: int,
+        attention_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
     ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
 
@@ -210,7 +218,7 @@ class ViTXRSCLSAttention(nn.Module):
         cls_tokens = cls_tokens.view(-1, seq_len, cls_tokens.shape[-1])  # (B * S) x S x C
 
         # Compute attention over CLS tokens
-        cls_tokens = cls_tokens + self.attention(cls_tokens)[0]
+        cls_tokens = cls_tokens + self.attention(cls_tokens, attention_mask=attention_mask)[0]
 
         # Reshape back to batch
         cls_tokens = cls_tokens.view(-1, cls_tokens.shape[-1])  # B x C
@@ -239,6 +247,7 @@ class ViTRXSLayer(nn.Module):
         self,
         hidden_states: torch.Tensor,
         seq_len: int,
+        attention_mask: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
     ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
@@ -253,6 +262,7 @@ class ViTRXSLayer(nn.Module):
         attention_output = self.cls_attention(
             attention_output,
             seq_len,
+            attention_mask,
             output_attentions=output_attentions,
         )[0]
 
@@ -284,6 +294,7 @@ class ViTRXSEncoder(nn.Module):
         self,
         hidden_states: torch.Tensor,
         seq_len: int,
+        images_attention_mask: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
         output_hidden_states: bool = False,
@@ -303,11 +314,17 @@ class ViTRXSEncoder(nn.Module):
                     layer_module.__call__,
                     hidden_states,
                     seq_len,
+                    images_attention_mask,
                     layer_head_mask,
                     output_attentions,
                 )
             else:
-                layer_outputs = layer_module(hidden_states, seq_len, layer_head_mask, output_attentions)
+                layer_outputs = layer_module(hidden_states,
+                                             seq_len,
+                                             images_attention_mask,
+                                             layer_head_mask,
+                                             output_attentions,
+                                             )
 
             hidden_states = layer_outputs[0]
 
@@ -389,6 +406,7 @@ class ViTXRSModel(ViTModel):
         encoder_outputs = self.encoder(
             embedding_output,
             seq_len=seq_len,
+            images_attention_mask=images_attention_mask,
             head_mask=head_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
