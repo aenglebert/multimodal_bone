@@ -23,9 +23,6 @@ class SigLIPLoss(nn.Module):
         logits = similarity * self.temperature + self.bias
         n = len(logits)
 
-        print("logits: ", logits)
-        print("targets: ", targets)
-
         if targets is None:
             targets = torch.eye(n, device=logits.device)
 
