@@ -1,1 +1,2 @@
 from .modeling_pooled_vision_text_dual_encoder import PooledVisionTextDualEncoderModel
+from .configuration_pooled_vision_text_dual_encoder import PooledVisionTextDualEncoderConfig

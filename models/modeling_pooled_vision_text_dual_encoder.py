@@ -19,10 +19,17 @@ class SigLIPLoss(nn.Module):
         self.temperature = nn.Parameter(torch.tensor(temperature))
         self.bias = nn.Parameter(torch.tensor(bias))
 
-    def forward(self, similarity: torch.Tensor) -> torch.Tensor:
+    def forward(self, similarity: torch.Tensor, targets=None) -> torch.Tensor:
         logits = similarity * self.temperature + self.bias
         n = len(logits)
-        labels = 2 * torch.eye(n, device=logits.device) - 1
+
+        print("logits: ", logits)
+        print("targets: ", targets)
+
+        if targets is None:
+            targets = torch.eye(n, device=logits.device)
+
+        labels = 2 * targets - 1
         return -torch.sum(nn.functional.logsigmoid(labels * logits)) / n
 
 
@@ -82,6 +89,7 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
             config: Optional[PooledVisionTextDualEncoderConfig] = None,
             vision_model: Optional[PreTrainedModel] = None,
             text_model: Optional[PreTrainedModel] = None,
+            pool_image: Optional[bool] = None,
     ):
         if config is None and (vision_model is None or text_model is None):
             raise ValueError("Either a configuration or an vision and a text model has to be provided")
@@ -91,6 +99,9 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
         else:
             if not isinstance(config, self.config_class):
                 raise ValueError(f"config: {config} has to be of type {self.config_class}")
+
+        if pool_image is not None:
+            config.pool_image = pool_image
 
         # initialize with config
         super().__init__(config)
@@ -132,22 +143,6 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
             return_dict=None,
             **kwargs
     ):
-        r"""
-        Returns:
-            text_features (`torch.FloatTensor` of shape `(batch_size, output_dim`): The text embeddings obtained from
-            the text model.
-
-        Examples:
-
-        ```python
-        >>> from transformers import VisionTextDualEncoderModel, AutoTokenizer
-
-        >>> model = VisionTextDualEncoderModel.from_pretrained("clip-italian/clip-italian")
-        >>> tokenizer = AutoTokenizer.from_pretrained("clip-italian/clip-italian")
-
-        >>> inputs = tokenizer(["una foto di un gatto", "una foto di un cane"], padding=True, return_tensors="pt")
-        >>> text_features = model.get_text_features(**inputs)
-        ```"""
         text_outputs = self.text_model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -180,20 +175,49 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
             input_ids: Optional[torch.LongTensor] = None,
             pixel_values: Optional[torch.FloatTensor] = None,
             images_attention_mask: Optional[torch.FloatTensor] = None,
-            seq_attr: Optional[torch.LongTensor] = None,
+            pooling_matrix: Optional[torch.FloatTensor] = None,
             attention_mask: Optional[torch.Tensor] = None,
             position_ids: Optional[torch.LongTensor] = None,
             token_type_ids: Optional[torch.LongTensor] = None,
             output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
             return_dict: Optional[bool] = None,
-            doc_embeddings: Optional[torch.FloatTensor] = None,
+            image_text_pairs: Optional[torch.LongTensor] = None,
             **kwargs,
     ) -> Union[Tuple[torch.Tensor], OrthoOutput]:
         return_dict = return_dict if return_dict is not None else self.config.return_dict
 
-        vision_outputs = self.vision_model(pixel_values, images_attention_mask=images_attention_mask, output_hidden_states=True)
-        image_embeds = vision_outputs.pooler_output
+        if image_text_pairs is None:
+            image_text_pairs = torch.eye(input_ids.shape[0], device=input_ids.device)
+
+        # If the model handles the pooling internally
+        if hasattr(self.vision_model.config, 'seq_model') and self.vision_model.config.seq_model:
+            if images_attention_mask is not None:
+                vision_outputs = self.vision_model(pixel_values,
+                                                   images_attention_mask=images_attention_mask,
+                                                   )
+            else:
+                vision_outputs = self.vision_model(pixel_values,
+                                                   pooling_matrix=pooling_matrix,
+                                                   )
+
+            image_embeds = vision_outputs.pooler_output
+
+        # Else, we pool the features by a mean pooling using the provided pooling matrix
+        elif self.config.pool_image and pooling_matrix is not None:
+            vision_outputs = self.vision_model(pixel_values,
+                                               )
+
+            image_embeds = vision_outputs.last_hidden_state[:, 0, :]
+
+            image_embeds = pooling_matrix @ image_embeds / pooling_matrix.sum(dim=-1, keepdim=True)
+
+        else:
+            vision_outputs = self.vision_model(pixel_values)
+
+            image_embeds = vision_outputs.last_hidden_state[:, 0, :]
+
+            if pooling_matrix is not None:
+                image_text_pairs = image_text_pairs @ pooling_matrix
 
         text_inputs = {
             "input_ids": input_ids,
@@ -223,7 +247,13 @@ class PooledVisionTextDualEncoderModel(PreTrainedModel):
         logits_per_text = torch.matmul(text_cls, image_embeds.t()) * logit_scale
         logits_per_image = logits_per_text.T
 
-        loss = {"contrastive_loss": self.loss(logits_per_text)}
+        if self.config.loss_type == "siglip":
+            loss = self.loss(logits_per_text, targets=image_text_pairs)
+
+        else:
+            loss = self.loss(logits_per_text)
+
+        loss = {"contrastive_loss": loss}
 
         if "loss" in vision_outputs.keys():
             loss["vision_loss"] = vision_outputs.loss

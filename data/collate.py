@@ -9,13 +9,33 @@ class StudyCollator:
                  pad_to_multiple_of=8,
                  return_tensors="pt",
                  padding="longest",
+                 images_sequence="matrix",
                  mlm=False,
                  mlm_probability=0.15,
                  ):
+        """
+        Args:
+            tokenizer: tokenizer to use
+            pad_to_multiple_of: pad to multiple of
+            return_tensors: return tensors type (default: "pt")
+            padding: padding type (default: "longest")
+            images_sequence: images sequence type (default: "matrix"). Can be either "matrix" or "5d",
+                where "matrix" will return a tensor of shape (n_images_total, channels, height, width) accompanied by a
+                tensor of shape (batch_size, n_images_total) that maps the images to the corresponding text.
+                "5d" will return a tensor of shape (batch_size, n_images_per_exam, channels, height, width)
+                with an additional tensor of shape (batch_size, n_images_per_exam) that is a mask of the valid images
+                in each exam (1 for valid, 0 for padding).
+            mlm: whether to use masked language modeling (default: False)
+            mlm_probability: masked language modeling probability (default: 0.15)
+        """
         self.tokenizer = tokenizer
         self.pad_to_multiple_of = pad_to_multiple_of
         self.return_tensors = return_tensors
         self.padding = padding
+
+        assert images_sequence in ["matrix", "5d"], "images_sequence must be either 'matrix' or '5d'"
+
+        self.images_sequence = images_sequence
 
         if mlm:
             self.mlm = True
@@ -77,23 +97,41 @@ class StudyCollator:
 
             text_list.append(text)
 
-        # Get max image sequence length
-        max_seq_size = max(seq_sizes)
+        if self.images_sequence == "5d":
+            # Get max image sequence length
+            max_seq_size = max(seq_sizes)
 
-        # Get shape of an image
-        image_shape = images_list_of_list[0][0].shape
+            # Get shape of an image
+            image_shape = images_list_of_list[0][0].shape
 
-        # Create a placeholder tensor for images
-        images = torch.zeros((len(seq_sizes), max_seq_size, image_shape[0], image_shape[1], image_shape[2]))
+            # Create a placeholder tensor for images
+            images = torch.zeros((len(seq_sizes), max_seq_size, image_shape[0], image_shape[1], image_shape[2]))
 
-        # Create a placeholder for images attention mask
-        images_attention_mask = torch.zeros((len(seq_sizes), max_seq_size))
+            # Create a placeholder for images attention mask
+            images_attention_mask = torch.zeros((len(seq_sizes), max_seq_size))
 
-        # Fill the placeholder tensor with images
-        for idx_x, image_list in enumerate(images_list_of_list):
-            for idx_y, image in enumerate(image_list):
-                images[idx_x, idx_y] = image
-                images_attention_mask[idx_x, idx_y] = 1
+            # Fill the placeholder tensor with images
+            for idx_x, image_list in enumerate(images_list_of_list):
+                for idx_y, image in enumerate(image_list):
+                    images[idx_x, idx_y] = image
+                    images_attention_mask[idx_x, idx_y] = 1
+        else:
+            images_attention_mask = None
+
+        if self.images_sequence == "matrix":
+            # stack images
+            images = torch.stack([image for image_list in images_list_of_list for image in image_list], 0)
+
+            # Create a placeholder for the pooling mapping tensor
+            pooling_matrix = torch.zeros((len(seq_sizes), images.shape[0]))
+
+            # Fill the placeholder tensor with 1 where an image is present
+            idx_x = 0
+            for idx_y, size in enumerate(seq_sizes):
+                pooling_matrix[idx_y, idx_x:idx_x + size] = 1
+                idx_x += size
+        else:
+            pooling_matrix = None
 
         if len(doc_embedding_list) == len(text_list):
             doc_embeddings = torch.stack(doc_embedding_list, 0)
@@ -112,7 +150,8 @@ class StudyCollator:
         return {
             **texts,
             "pixel_values": images,
-            "images_attention_mask": images_attention_mask,
-            "seq_attr": seq_attr,
+            "pooling_matrix": pooling_matrix if pooling_matrix is not None else None,
+            "images_attention_mask": images_attention_mask if images_attention_mask is not None else None,
+            "image_text_pairs": torch.eye(len(seq_sizes), len(seq_sizes)),
             "doc_embeddings": doc_embeddings if doc_embeddings is not None else None,
         }

@@ -13,7 +13,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPooling, BaseModelO
 from transformers.configuration_utils import PretrainedConfig
 
 from transformers.models.vit.modeling_vit import ViTAttention, ViTIntermediate, ViTOutput, ViTEmbeddings, ViTPooler
-from transformers.models.vit_mae.modeling_vit_mae import ViTMAEEmbeddings, ViTMAEDecoder
+from transformers.models.vit_mae.modeling_vit_mae import ViTMAEEmbeddings, ViTMAEDecoder, ViTMAEEncoder
 
 from models.seq_vision_transformer import SeqVisionTransformer
 
@@ -29,7 +29,6 @@ class ViTXRSConfig(ViTConfig):
     def __init__(self, pooling="mean_cls_token", num_cls_attention_heads=2, **kwargs):
         super().__init__(**kwargs)
 
-        self.num_cls_attention_heads = num_cls_attention_heads
         self.seq_model = True
         self.pooling = pooling
         self.mask_ratio = 0
@@ -111,236 +110,46 @@ class ViTXRSMAEForPreTrainingOutput(ModelOutput):
     attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 
-class ViTXRSPooler(nn.Module):
-    def __init__(self, config: ViTConfig):
-        super().__init__()
-        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        self.activation = nn.Tanh()
+class GatedAttentionPool1d(nn.Module):
+    """
+    Based on paper from Ilse, M., Tomczak, J., & Welling, M. (2018, July).
+    Attention-based deep multiple instance learning. In International conference on machine learning (pp. 2127-2136). PMLR.
+    http://proceedings.mlr.press/v80/ilse18a.html
+    """
 
-    def forward(self, hidden_states):
-        # We "pool" the model by simply taking the hidden state corresponding
-        # to the first token.
-        first_token_tensor = hidden_states[:, 0]
-        pooled_output = self.dense(first_token_tensor)
-        pooled_output = self.activation(pooled_output)
-        return pooled_output
-
-
-class CLSSelfAttention(nn.Module):
-    def __init__(self, config: ViTConfig) -> None:
-        super().__init__()
-        if config.hidden_size % config.num_cls_attention_heads != 0 and not hasattr(config, "embedding_size"):
-            raise ValueError(
-                f"The hidden size {config.hidden_size,} is not a multiple of the number of attention "
-                f"heads {config.num_attention_heads}."
-            )
-
-        self.num_attention_heads = config.num_cls_attention_heads
-        self.attention_head_size = int(config.hidden_size / config.num_cls_attention_heads)
-        self.all_head_size = self.num_attention_heads * self.attention_head_size
-
-        self.query = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-        self.key = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-        self.value = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-
-        self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
-
-    def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
-        x = x.view(new_x_shape)
-        return x.permute(0, 2, 1, 3)
-
-    def forward(
-        self, hidden_states, attention_mask=None, head_mask: Optional[torch.Tensor] = None, output_attentions: bool = False
-    ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
-        mixed_query_layer = self.query(hidden_states)
-
-        key_layer = self.transpose_for_scores(self.key(hidden_states))
-        value_layer = self.transpose_for_scores(self.value(hidden_states))
-        query_layer = self.transpose_for_scores(mixed_query_layer)
-
-        # Take the dot product between "query" and "key" to get the raw attention scores.
-        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
-
-        # Apply mask
-        if attention_mask is not None:
-            mask = attention_mask[:, None, None, :]
-            mask = (1.0 - mask) * torch.finfo(mask.dtype).min
-
-            attention_scores = attention_scores + mask
-
-        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
-
-        # Normalize the attention scores to probabilities.
-        attention_probs = nn.functional.softmax(attention_scores, dim=-1)
-
-        # This is actually dropping out entire tokens to attend to, which might
-        # seem a bit unusual, but is taken from the original Transformer paper.
-        attention_probs = self.dropout(attention_probs)
-
-        # Mask heads if we want to
-        if head_mask is not None:
-            attention_probs = attention_probs * head_mask
-
-        context_layer = torch.matmul(attention_probs, value_layer)
-
-        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
-        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
-        context_layer = context_layer.view(new_context_layer_shape)
-
-        outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
-
-        return outputs
-
-
-class ViTXRSCLSAttention(nn.Module):
-    """Attention between the cls tokens inside of a sequence of images."""
-    def __init__(self, config: ViTConfig):
+    def __init__(self, config):
         super().__init__()
         self.config = config
-        self.attention = CLSSelfAttention(config)
+        hidden_size = config.hidden_size
 
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        seq_len: int,
-        attention_mask: Optional[torch.Tensor] = None,
-        output_attentions: bool = False,
-    ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
+        # V and U are linear projections of the input embeddings
+        self.V = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.U = nn.Linear(hidden_size, hidden_size, bias=False)
 
-        if seq_len is None:
-            seq_len = 1
+        self.w = nn.Linear(hidden_size, 1, bias=False)
 
-        # Get CLS tokens for the batch
-        cls_tokens = hidden_states[:, 0, :].clone()  # B x C
+    def forward(self, x, pooling_matrix):
+        # x is Bimg, C
 
-        # Group CLS by sequence length
-        cls_tokens = cls_tokens.view(-1, seq_len, cls_tokens.shape[-1])  # (B * S) x S x C
+        # We compute the projections for the images embeddings
+        Vx = self.V(x)
+        Ux = self.U(x)
 
-        # Compute attention over CLS tokens
-        cls_tokens = cls_tokens + self.attention(cls_tokens, attention_mask=attention_mask)[0]
+        z = torch.tanh(Vx) * torch.sigmoid(Ux)
+        s = self.w(z).squeeze(-1)
 
-        # Reshape back to batch
-        cls_tokens = cls_tokens.view(-1, cls_tokens.shape[-1])  # B x C
+        # s is still Bimg, we repeat to get (Btxt, Bimg)
+        s = s.expand(*pooling_matrix.shape)
 
-        # Update input_dict
-        hidden_states[:, 0, :] = cls_tokens
+        # We mask using pooling_matrix
+        mask = ((1 - pooling_matrix) * torch.finfo(pooling_matrix.dtype).min)
+        s = s + mask
 
-        return (hidden_states, )
+        # Attention weights using a softmax
+        a = torch.softmax(s, dim=-1)
 
-
-class ViTRXSLayer(nn.Module):
-    """This corresponds to the Block class in the timm implementation."""
-
-    def __init__(self, config: ViTConfig) -> None:
-        super().__init__()
-        self.chunk_size_feed_forward = config.chunk_size_feed_forward
-        self.seq_len_dim = 1
-        self.attention = ViTAttention(config)
-        self.cls_attention = ViTXRSCLSAttention(config)
-        self.intermediate = ViTIntermediate(config)
-        self.output = ViTOutput(config)
-        self.layernorm_before = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.layernorm_after = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        seq_len: int,
-        attention_mask: Optional[torch.Tensor] = None,
-        head_mask: Optional[torch.Tensor] = None,
-        output_attentions: bool = False,
-    ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
-        self_attention_outputs = self.attention(
-            self.layernorm_before(hidden_states),  # in ViT, layernorm is applied before self-attention
-            head_mask,
-            output_attentions=output_attentions,
-        )
-        attention_output = self_attention_outputs[0]
-
-        # Attention between CLS tokens
-        attention_output = self.cls_attention(
-            attention_output,
-            seq_len,
-            attention_mask,
-            output_attentions=output_attentions,
-        )[0]
-
-        outputs = self_attention_outputs[1:]  # add self attentions if we output attention weights
-
-        # first residual connection
-        hidden_states = attention_output + hidden_states
-
-        # in ViT, layernorm is also applied after self-attention
-        layer_output = self.layernorm_after(hidden_states)
-        layer_output = self.intermediate(layer_output)
-
-        # second residual connection is done here
-        layer_output = self.output(layer_output, hidden_states)
-
-        outputs = (layer_output,) + outputs
-
-        return outputs
-
-
-class ViTRXSEncoder(nn.Module):
-    def __init__(self, config: ViTConfig) -> None:
-        super().__init__()
-        self.config = config
-        self.layer = nn.ModuleList([ViTRXSLayer(config) for _ in range(config.num_hidden_layers)])
-        self.gradient_checkpointing = False
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        seq_len: int,
-        images_attention_mask: Optional[torch.Tensor] = None,
-        head_mask: Optional[torch.Tensor] = None,
-        output_attentions: bool = False,
-        output_hidden_states: bool = False,
-        return_dict: bool = True,
-    ) -> Union[tuple, BaseModelOutput]:
-        all_hidden_states = () if output_hidden_states else None
-        all_self_attentions = () if output_attentions else None
-
-        for i, layer_module in enumerate(self.layer):
-            if output_hidden_states:
-                all_hidden_states = all_hidden_states + (hidden_states,)
-
-            layer_head_mask = head_mask[i] if head_mask is not None else None
-
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    layer_module.__call__,
-                    hidden_states,
-                    seq_len,
-                    images_attention_mask,
-                    layer_head_mask,
-                    output_attentions,
-                )
-            else:
-                layer_outputs = layer_module(hidden_states,
-                                             seq_len,
-                                             images_attention_mask,
-                                             layer_head_mask,
-                                             output_attentions,
-                                             )
-
-            hidden_states = layer_outputs[0]
-
-            if output_attentions:
-                all_self_attentions = all_self_attentions + (layer_outputs[1],)
-
-        if output_hidden_states:
-            all_hidden_states = all_hidden_states + (hidden_states,)
-
-        if not return_dict:
-            return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
-        return BaseModelOutput(
-            last_hidden_state=hidden_states,
-            hidden_states=all_hidden_states,
-            attentions=all_self_attentions,
-        )
+        # Weighted sum
+        return a @ x
 
 
 class ViTXRSModel(ViTModel):
@@ -351,10 +160,10 @@ class ViTXRSModel(ViTModel):
         self.config = config
 
         self.embeddings = ViTMAEEmbeddings(config)
-        self.encoder = ViTRXSEncoder(config)
+        self.encoder = ViTMAEEncoder(config)
 
         self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.pooler = ViTPooler(config) if add_pooling_layer else None
+        self.pooler = GatedAttentionPool1d(config) if add_pooling_layer else None
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -362,7 +171,7 @@ class ViTXRSModel(ViTModel):
     def forward(
         self,
         pixel_values: Optional[torch.Tensor] = None,
-        images_attention_mask: Optional[torch.Tensor] = None,
+        pooling_matrix: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
@@ -377,17 +186,6 @@ class ViTXRSModel(ViTModel):
 
         if pixel_values is None:
             raise ValueError("You have to specify pixel_values")
-
-        if pixel_values.dim() == 5:
-            bs = pixel_values.shape[0]
-            seq_len = pixel_values.shape[1]
-            pixel_values = pixel_values.flatten(0, 1).contiguous()
-
-        elif pixel_values.dim() == 4:
-            bs = pixel_values.shape[0]
-            seq_len = 1
-        else:
-            raise ValueError(f'Input tensor must be 4D or 5D, got: {pixel_values.dim()}')
 
         # Prepare head mask if needed
         # 1.0 in head_mask indicate we keep the head
@@ -405,8 +203,6 @@ class ViTXRSModel(ViTModel):
 
         encoder_outputs = self.encoder(
             embedding_output,
-            seq_len=seq_len,
-            images_attention_mask=images_attention_mask,
             head_mask=head_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
@@ -415,15 +211,10 @@ class ViTXRSModel(ViTModel):
         sequence_output = encoder_outputs[0]
         sequence_output = self.layernorm(sequence_output)
 
-        if seq_len > 1:
-            grouped_sequence_output = sequence_output.view(bs, seq_len, sequence_output.shape[1], -1)
-            masked_cls_token = grouped_sequence_output[:, :, 0] * images_attention_mask.unsqueeze(-1)
-            pooled_cls_token = masked_cls_token.sum(1) / images_attention_mask.sum(-1).unsqueeze(-1)
-
+        if self.pooler is not None and pooling_matrix is not None:
+            pooled_output = self.pooler(sequence_output[:, 0], pooling_matrix)
         else:
-            pooled_cls_token = sequence_output[:, 0]
-
-        pooled_output = self.pooler(pooled_cls_token.unsqueeze(1)) if self.pooler is not None else None
+            pooled_output = None
 
         if not return_dict:
             head_outputs = (sequence_output, pooled_output) if pooled_output is not None else (sequence_output,)
@@ -545,12 +336,6 @@ class ViTXRSMAEForPreTraining(ViTXRSModel):
             `torch.FloatTensor`: Pixel reconstruction loss.
         """
 
-        if pixel_values.dim() == 5:
-            pixel_values = pixel_values.flatten(0, 1).contiguous()
-
-        elif pixel_values.dim() != 4:
-            raise ValueError(f'Input tensor must be 4D or 5D, got: {pixel_values.dim()}')
-
         target = self.patchify(pixel_values)
         if self.config.norm_pix_loss:
             mean = target.mean(dim=-1, keepdim=True)
@@ -564,21 +349,20 @@ class ViTXRSMAEForPreTraining(ViTXRSModel):
         return loss
 
     def forward(
-        self,
-        pixel_values: Optional[torch.FloatTensor] = None,
-        images_attention_mask: Optional[torch.FloatTensor] = None,
-        noise: Optional[torch.FloatTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
+            self,
+            pixel_values: Optional[torch.FloatTensor] = None,
+            pooling_matrix: Optional[torch.FloatTensor] = None,
+            noise: Optional[torch.FloatTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
     ) -> Union[Tuple, ViTXRSMAEForPreTrainingOutput]:
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         outputs = super().forward(
             pixel_values,
-            images_attention_mask=images_attention_mask,
             noise=noise,
             head_mask=head_mask,
             output_attentions=output_attentions,

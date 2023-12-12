@@ -1,7 +1,7 @@
 defaults:
   - training_args: lion8bit
   - dataset: wds_paired_xrays
-  - vision_model: biomed_seqvit
+  - vision_model: biomed_vit_xrs
   - text_model: dr_bert
   - vlp_model: pooled_vlp
   - _self_

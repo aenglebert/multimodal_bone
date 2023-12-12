@@ -6,6 +6,7 @@ class PooledVisionTextDualEncoderConfig(PretrainedConfig):
                  projection_dim=512,
                  logit_scale_init_value=2.6592,
                  loss_type="siglip",
+                 pool_image=True,
                  **kwargs):
         super().__init__(**kwargs)
 
@@ -27,6 +28,8 @@ class PooledVisionTextDualEncoderConfig(PretrainedConfig):
         self.logit_scale_init_value = logit_scale_init_value
 
         self.loss_type = loss_type
+
+        self.pool_image = pool_image
 
     @classmethod
     def from_vision_text_configs(cls, vision_config: PretrainedConfig, text_config: PretrainedConfig, **kwargs):
