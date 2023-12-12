@@ -1,0 +1,2 @@
+_target_: models.PooledVisionTextDualEncoderModel
+pool_image: false
