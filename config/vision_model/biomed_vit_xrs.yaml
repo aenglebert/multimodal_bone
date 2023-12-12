@@ -1,0 +1,5 @@
+encoder:
+  _target_: models.modeling_vitxrs.ViTXRSModel.from_pretrained
+  _args_:
+    - biomed_vit_xrs
+  trust_remote_code: true
