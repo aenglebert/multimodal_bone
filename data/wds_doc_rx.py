@@ -10,15 +10,20 @@ import webdataset as wds
 
 def create_wds_ortho_docs_rx(data_dir,
                              prefix="ortho_coupled",
+                             n_val_shards=1,
                              image_transform=None,
                              text_tokenizer=None,
                              max_study_images=10,
                              length=None,
+                             n_samples_per_shard=4096,
                              doc_embedding_npz=None,
                              ):
     file_list = list(Path(data_dir).glob(prefix + ".*.tar"))
     file_list = [str(path) for path in file_list]
     file_list.sort()
+
+    val_file_list = file_list[:n_val_shards]
+    train_file_list = file_list[n_val_shards:]
 
     if image_transform is None:
         image_transform = ToTensorV2()
@@ -41,16 +46,22 @@ def create_wds_ortho_docs_rx(data_dir,
 
         return text, images
 
-    dataset = (
-        wds.WebDataset(file_list)
+    train_dataset = (
+        wds.WebDataset(train_file_list)
         .shuffle(1000)
         .map(preprocess)
     )
 
-    if length is not None:
-        dataset = dataset.with_length(length)
+    val_dataset = (
+        wds.WebDataset(val_file_list)
+        .map(preprocess)
+    )
 
-    return dataset
+    if length is not None:
+        train_dataset = train_dataset.with_length(length - n_val_shards * n_samples_per_shard)
+        val_dataset = val_dataset.with_length(n_samples_per_shard * n_val_shards)
+
+    return train_dataset, val_dataset
 
 
 class BatchedWebLoaderLen(wds.WebLoader):

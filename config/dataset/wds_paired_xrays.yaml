@@ -3,6 +3,7 @@ _args_:
   - ./ortho_mm
 max_study_images: 4
 length: 219675
+n_val_shards: 1
 image_transform:
   _target_: albumentations.Compose
   _args_:

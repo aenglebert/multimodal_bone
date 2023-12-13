@@ -154,4 +154,5 @@ class StudyCollator:
             "images_attention_mask": images_attention_mask if images_attention_mask is not None else None,
             "image_text_pairs": torch.eye(len(seq_sizes), len(seq_sizes)),
             "doc_embeddings": doc_embeddings if doc_embeddings is not None else None,
+            "return_loss": True,
         }
