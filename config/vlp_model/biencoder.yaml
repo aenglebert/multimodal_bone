@@ -10,3 +10,6 @@ lr_scheduler_params:
   verbose: true
 lr_scheduler_monitor: val/loss
 lr_scheduler_interval: epoch
+global_loss_fn:
+  _target_: models.utils.ClipLoss
+  temperature: 0.1
