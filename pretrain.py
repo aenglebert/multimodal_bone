@@ -5,6 +5,7 @@ import random
 import hydra
 from hydra.utils import instantiate
 from omegaconf import DictConfig
+from omegaconf import OmegaConf
 
 from pathlib import Path
 
@@ -40,6 +41,9 @@ def main(cfg: DictConfig):
     # Create logger
     wandb_logger = WandbLogger(project=cfg.project_name, name=cfg.experiment_name)
 
+    # Log the config
+    wandb_logger.log_hyperparams(OmegaConf.to_container(cfg, resolve=True))
+
     # Instantiate the model
     image_encoder = instantiate(cfg.vision_model.encoder)
 
@@ -47,21 +51,17 @@ def main(cfg: DictConfig):
 
     text_encoder = instantiate(cfg.text_model.encoder)
 
-    print()
-
     # Instantiate the dataset
     datamodule = instantiate(cfg.dataset,
                              image_transform=instantiate(cfg.image_transform),
                              text_tokenizer=tokenizer,
                              mlm=(True if "lm_head" in dir(text_encoder) else False),
-
                              )
 
     model = instantiate(cfg.vlp_model,
                         vision_model=image_encoder,
                         text_model=text_encoder,
                         sep_token_id=tokenizer.sep_token_id,
-                        config=cfg,
                         )
 
     trainer = instantiate(cfg.trainer, logger=wandb_logger)
