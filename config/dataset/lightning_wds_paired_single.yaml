@@ -1,0 +1,11 @@
+_target_: data.WdsDocRxDataModule
+_args_:
+  - ./ortho_mm
+max_study_images: 1
+length: 219675
+n_val_shards: 1
+n_samples_per_shard: 4096
+prefix: ortho_coupled
+limit_random_first_n_images: 12
+batch_size: ${batch_size}
+num_workers: ${num_proc}

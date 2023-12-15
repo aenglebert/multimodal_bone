@@ -1,0 +1,18 @@
+defaults:
+  - trainer: default
+  - dataset: lightning_wds_paired_single
+  - image_transform: convirt_448
+  - vision_model: biomed_vit_xrs
+  - text_model: dr_bert
+  - vlp_model: biencoder
+  - _self_
+
+seed: 12345
+test_size: 0.1
+num_proc: 16
+batch_size: 4
+project_name: "ortho_vlp"
+experiment_name: "pretrain"
+
+logging_steps: 100
+output_dir: "./output"

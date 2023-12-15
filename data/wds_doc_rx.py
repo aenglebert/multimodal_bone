@@ -7,7 +7,11 @@ from albumentations.pytorch import ToTensorV2
 
 import webdataset as wds
 
+from pytorch_lightning import LightningDataModule
+
 import random
+
+from .collate import StudyCollator
 
 
 def create_wds_ortho_docs_rx(data_dir,
@@ -104,3 +108,77 @@ class BatchedWebLoaderLen(wds.WebLoader):
 
     def __len__(self):
         return self.length
+
+
+class WdsDocRxDataModule(LightningDataModule):
+    def __init__(self,
+                 data_dir,
+                 mlm=False,
+                 mlm_probability=0.15,
+                 prefix="ortho_coupled",
+                 n_val_shards=1,
+                 image_transform=None,
+                 text_tokenizer=None,
+                 max_study_images=10,
+                 limit_random_first_n_images=12,
+                 length=None,
+                 n_samples_per_shard=4096,
+                 batch_size=32,
+                 num_workers=8,
+                 pin_memory=True,
+                 drop_last=False,
+                 ):
+        super().__init__()
+
+        self.data_dir = data_dir
+        self.prefix = prefix
+        self.n_val_shards = n_val_shards
+        self.image_transform = image_transform
+        self.text_tokenizer = text_tokenizer
+        self.max_study_images = max_study_images
+        self.limit_random_first_n_images = limit_random_first_n_images
+        self.length = length
+        self.n_samples_per_shard = n_samples_per_shard
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.pin_memory = pin_memory
+        self.drop_last = drop_last
+        self.collate_fn = StudyCollator(text_tokenizer,
+                                        mlm=mlm,
+                                        mlm_probability=mlm_probability,
+                                        )
+
+    def prepare_data(self):
+        pass
+
+    def setup(self, stage=None):
+        if stage == 'fit' or stage is None:
+            train_dataset, val_dataset = create_wds_ortho_docs_rx(
+                data_dir=self.data_dir,
+                prefix=self.prefix,
+                n_val_shards=self.n_val_shards,
+                image_transform=self.image_transform,
+                max_study_images=self.max_study_images,
+                limit_random_first_n_images=self.limit_random_first_n_images,
+                length=self.length,
+                n_samples_per_shard=self.n_samples_per_shard,
+            )
+
+            self.train_dataset = train_dataset
+            self.val_dataset = val_dataset
+
+    def train_dataloader(self):
+        return BatchedWebLoaderLen(
+            self.train_dataset.batched(self.batch_size,
+                                       collation_fn=self.collate_fn),
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+        )
+
+    def val_dataloader(self):
+        return BatchedWebLoaderLen(
+            self.val_dataset.batched(self.batch_size,
+                                     collation_fn=self.collate_fn),
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+        )

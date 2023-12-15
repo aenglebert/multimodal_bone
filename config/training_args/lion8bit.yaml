@@ -1,6 +1,5 @@
 _target_: transformers.TrainingArguments
 output_dir: "checkpoints/"
-num_train_epochs: 1
 per_device_train_batch_size: 8
 per_device_eval_batch_size: 4
 gradient_accumulation_steps: 10
@@ -20,3 +19,6 @@ fp16: True
 dataloader_num_workers: ${num_proc}
 run_name: "vlp_lion_8bit_optim"
 report_to: "wandb"
+eval_steps: 5000
+evaluation_strategy: "steps"
+prediction_loss_only: True

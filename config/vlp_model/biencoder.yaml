@@ -1,0 +1,4 @@
+_target_: models.BiEncoder
+pool_image: false
+lr: 1e-5
+optimizer: Lion8bit
