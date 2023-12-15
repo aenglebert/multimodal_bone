@@ -1,0 +1,9 @@
+encoder:
+  _target_: models.modeling_vitxrs.ViTXRSModel.from_pretrained
+  _args_:
+    - "google/vit-base-patch16-224"
+  config:
+    _target_: models.modeling_vitxrs.ViTXRSConfig.from_pretrained
+    _args_:
+      - "google/vit-base-patch16-224"
+    seq_model: false
