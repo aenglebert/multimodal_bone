@@ -22,6 +22,7 @@ def create_wds_ortho_docs_rx(data_dir,
                              max_study_images=10,
                              limit_random_first_n_images=12,
                              length=None,
+                             batch_size=1,
                              n_samples_per_shard=4096,
                              ):
     """
@@ -84,8 +85,8 @@ def create_wds_ortho_docs_rx(data_dir,
     )
 
     if length is not None:
-        train_dataset = train_dataset.with_length(length - n_val_shards * n_samples_per_shard)
-        val_dataset = val_dataset.with_length(n_samples_per_shard * n_val_shards)
+        train_dataset = train_dataset.with_length((length - n_val_shards * n_samples_per_shard) // batch_size)
+        val_dataset = val_dataset.with_length((n_samples_per_shard * n_val_shards) // batch_size)
 
     return train_dataset, val_dataset
 
@@ -148,6 +149,8 @@ class WdsDocRxDataModule(LightningDataModule):
                                         mlm_probability=mlm_probability,
                                         sep_sentences=True,
                                         )
+        self.train_dataset = None
+        self.val_dataset = None
 
     def prepare_data(self):
         pass
@@ -162,6 +165,7 @@ class WdsDocRxDataModule(LightningDataModule):
                 max_study_images=self.max_study_images,
                 limit_random_first_n_images=self.limit_random_first_n_images,
                 length=self.length,
+                batch_size=self.batch_size,
                 n_samples_per_shard=self.n_samples_per_shard,
             )
 
