@@ -14,6 +14,7 @@ class BiEncoder(LightningModule):
                  local_loss_fn=None,
                  optimizer="AdamW",
                  sep_token_id=None,
+                 freeze_text_model_first_layers=0,
                  lr=1e-5,
                  **kwargs):
         super().__init__()
@@ -105,8 +106,10 @@ class BiEncoder(LightningModule):
 
     def configure_optimizers(self):
         optimizer = optimizer_dict[self.optimizer](self.parameters(), lr=self.hparams.lr)
-        # Freeze embedding layer and 6 first layers of the text model
-        self.text_model.embeddings.requires_grad_(False)
-        for param in self.text_model.encoder.layer[:6].parameters():
-            param.requires_grad = False
+        # Freeze embedding layer and first layers of the text model
+        if self.hparams.freeze_text_model_first_layers > 0:
+            self.text_model.embeddings.requires_grad_(False)
+            for param in self.text_model.encoder.layer[:self.hparams.freeze_text_model_first_layers].parameters():
+                param.requires_grad = False
+
         return optimizer
