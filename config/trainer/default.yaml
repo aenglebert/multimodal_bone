@@ -13,3 +13,4 @@ callbacks:
     patience: 10
     verbose: True
     mode: min
+  - _target_: pytorch_lightning.callbacks.LearningRateMonitor
