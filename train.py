@@ -95,6 +95,47 @@ class CustomTrainer(Trainer):
 
         return self.accelerator.prepare(DataLoader(train_dataset, **dataloader_params))
 
+    def get_eval_dataloader(self, eval_dataset=None) -> DataLoader:
+        """
+        Returns the evaluation [`~torch.utils.data.DataLoader`].
+
+        Subclass and override this method if you want to inject some custom behavior.
+
+        Args:
+            eval_dataset (`torch.utils.data.Dataset`, *optional*):
+                If provided, will override `self.eval_dataset`. If it is a [`~datasets.Dataset`], columns not accepted
+                by the `model.forward()` method are automatically removed. It must implement `__len__`.
+        """
+        if eval_dataset is None and self.eval_dataset is None:
+            raise ValueError("Trainer: evaluation requires an eval_dataset.")
+        eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+        data_collator = self.data_collator
+
+        if is_datasets_available() and isinstance(eval_dataset, datasets.Dataset):
+            eval_dataset = self._remove_unused_columns(eval_dataset, description="evaluation")
+        else:
+            data_collator = self._get_collator_with_removed_columns(data_collator, description="evaluation")
+
+        dataloader_params = {
+            "batch_size": self._train_batch_size,
+            "collate_fn": data_collator,
+            "num_workers": self.args.dataloader_num_workers,
+            "pin_memory": self.args.dataloader_pin_memory,
+        }
+
+
+        if not isinstance(eval_dataset, torch.utils.data.IterableDataset):
+            dataloader_params["sampler"] = self._get_eval_sampler(eval_dataset)
+            dataloader_params["drop_last"] = self.args.dataloader_drop_last
+
+        if isinstance(eval_dataset, wds.compat.WebDataset):
+            dataloader_params["collate_fn"] = lambda x: x
+            dataloader = self.accelerator.prepare(
+                BatchedWebLoaderLen(eval_dataset.batched(self._train_batch_size, collation_fn=data_collator), **dataloader_params))
+            return dataloader
+
+        return self.accelerator.prepare(DataLoader(eval_dataset, **dataloader_params))
+
     def compute_loss(self, model, inputs, return_outputs=False):
         """
         How the loss is computed by Trainer. By default, all models return the loss in the first element.
@@ -158,7 +199,7 @@ def main(cfg: DictConfig):
     seed_everything(cfg.seed)
 
     # Instantiate the dataset
-    dataset = instantiate(cfg.dataset)
+    train_dataset, val_dataset = instantiate(cfg.dataset)
 
     # Keep only a part of the dataset for debugging
     #if cfg.debug:
@@ -190,10 +231,12 @@ def main(cfg: DictConfig):
     # Instantiate the trainer
     trainer = CustomTrainer(model=model,
                       args=training_args,
-                      train_dataset=dataset,
-                      #eval_dataset=tokenized_dataset["test"],
+                      train_dataset=train_dataset,
+                      eval_dataset=val_dataset,
                       data_collator=data_collator,
                       )
+
+    #print(trainer.evaluate(eval_dataset=val_dataset))
 
     # Train the model
     #trainer.train(resume_from_checkpoint=cfg.checkpoint.resume_from_checkpoint)
