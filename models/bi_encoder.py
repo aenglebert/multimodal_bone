@@ -21,6 +21,7 @@ class BiEncoder(LightningModule):
                  freeze_text_model_first_layers=0,
                  lr=1e-5,
                  scheduler_params=None,
+                 config=None,
                  **kwargs):
         super().__init__()
 

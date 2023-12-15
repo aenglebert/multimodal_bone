@@ -61,6 +61,7 @@ def main(cfg: DictConfig):
                         vision_model=image_encoder,
                         text_model=text_encoder,
                         sep_token_id=tokenizer.sep_token_id,
+                        config=cfg,
                         )
 
     trainer = instantiate(cfg.trainer, logger=wandb_logger)
