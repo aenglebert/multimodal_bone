@@ -15,8 +15,6 @@ from transformers.configuration_utils import PretrainedConfig
 from transformers.models.vit.modeling_vit import ViTAttention, ViTIntermediate, ViTOutput, ViTEmbeddings, ViTPooler
 from transformers.models.vit_mae.modeling_vit_mae import ViTMAEEmbeddings, ViTMAEDecoder, ViTMAEEncoder
 
-from models.seq_vision_transformer import SeqVisionTransformer
-
 AUTO_MAP = {
     "AutoModel": "modeling_vitxrs.ViTXRSModel",
 }
@@ -26,12 +24,16 @@ class ViTXRSConfig(ViTConfig):
 
     model_type = "vitxrs"
 
-    def __init__(self, pooling="mean_cls_token", num_cls_attention_heads=2, **kwargs):
+    def __init__(self,
+                 seq_model=False,
+                 mask_ratio=0,
+                 projection_size=512,
+                 **kwargs):
         super().__init__(**kwargs)
 
-        self.seq_model = True
-        self.pooling = pooling
-        self.mask_ratio = 0
+        self.seq_model = seq_model
+        self.mask_ratio = mask_ratio
+        self.projection_size = projection_size
 
 
 class ViTXRSMAEConfig(ViTXRSConfig):
@@ -45,17 +47,14 @@ class ViTXRSMAEConfig(ViTXRSConfig):
                  decoder_hidden_size=512,
                  decoder_num_hidden_layers=8,
                  decoder_intermediate_size=2048,
-                 mask_ratio=0.75,
                  norm_pix_loss=False,
                  **kwargs):
         super().__init__(**kwargs)
 
-        self.mask_ratio = mask_ratio
         self.decoder_num_attention_heads = decoder_num_attention_heads
         self.decoder_hidden_size = decoder_hidden_size
         self.decoder_num_hidden_layers = decoder_num_hidden_layers
         self.decoder_intermediate_size = decoder_intermediate_size
-        self.mask_ratio = mask_ratio
         self.norm_pix_loss = norm_pix_loss
 
     @classmethod
@@ -155,7 +154,7 @@ class GatedAttentionPool1d(nn.Module):
 class ViTXRSModel(ViTModel):
     config_class = ViTXRSConfig
 
-    def __init__(self, config: ViTConfig, add_pooling_layer: bool = True):
+    def __init__(self, config: ViTConfig):
         super().__init__(config)
         self.config = config
 
@@ -163,7 +162,10 @@ class ViTXRSModel(ViTModel):
         self.encoder = ViTMAEEncoder(config)
 
         self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.pooler = GatedAttentionPool1d(config) if add_pooling_layer else None
+
+        self.pooler = GatedAttentionPool1d(config) if config.seq_model else None
+
+        self.projection = nn.Linear(config.hidden_size, config.projection_size)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -237,7 +239,7 @@ class ViTXRSMAEForPreTraining(ViTXRSModel):
     main_input_name = "pixel_values"
     supports_gradient_checkpointing = True
 
-    def __init__(self, config: ViTConfig, add_pooling_layer: bool = True):
+    def __init__(self, config: ViTXRSMAEConfig):
         super().__init__(config)
 
         self.decoder = ViTMAEDecoder(config, num_patches=self.embeddings.num_patches)
