@@ -1,9 +1,11 @@
 encoder:
-  _target_: models.modeling_proj_camembert.ProjCamembertModel
+  _target_: models.modeling_proj_camembert.ProjCamembertModel.from_pretrained
   _args_:
-    - _target_: models.modeling_proj_camembert.ProjCamembertConfig.from_pretrained
-      _args_:
-        - Dr-BERT/DrBERT-4GB
+    - Dr-BERT/DrBERT-4GB
+  config:
+    _target_: models.modeling_proj_camembert.ProjCamembertConfig.from_pretrained
+    _args_:
+      - Dr-BERT/DrBERT-4GB
 
 tokenizer:
   _target_: transformers.AutoTokenizer.from_pretrained
