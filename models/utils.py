@@ -1,6 +1,19 @@
 import torch
 from torch import nn
 
+import bitsandbytes as bnb
+
+optimizer_dict = {
+    "AdamW": bnb.optim.AdamW,
+    "AdamW8bit": bnb.optim.AdamW8bit,
+    "Adam": bnb.optim.Adam,
+    "Adam8bit": bnb.optim.Adam8bit,
+    "SGD": bnb.optim.SGD,
+    "SGD8bit": bnb.optim.SGD8bit,
+    "Lion": bnb.optim.Lion,
+    "Lion8bit": bnb.optim.Lion8bit,
+}
+
 
 class SigLIPLoss(nn.Module):
     def __init__(self, temperature: float = 10.0, bias: float = -10.0):
