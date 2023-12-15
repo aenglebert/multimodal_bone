@@ -14,14 +14,23 @@ class BiEncoder(LightningModule):
                  local_loss_fn=None,
                  optimizer="AdamW",
                  sep_token_id=None,
+                 lr_scheduler=None,
+                 lr_scheduler_params=None,
+                 lr_scheduler_interval="epoch",
+                 lr_scheduler_monitor="val/loss",
                  freeze_text_model_first_layers=0,
                  lr=1e-5,
+                 scheduler_params=None,
                  **kwargs):
         super().__init__()
 
         assert vision_model is not None and text_model is not None, "Vision and text models must be provided"
 
-        self.save_hyperparameters(ignore=["vision_model", "text_model", "global_loss_fn", "local_loss_fn"])
+        self.save_hyperparameters(ignore=["vision_model",
+                                          "text_model",
+                                          "global_loss_fn",
+                                          "local_loss_fn",
+                                          ])
 
         self.vision_model = vision_model
         self.text_model = text_model
@@ -112,4 +121,17 @@ class BiEncoder(LightningModule):
             for param in self.text_model.encoder.layer[:self.hparams.freeze_text_model_first_layers].parameters():
                 param.requires_grad = False
 
-        return optimizer
+        if self.hparams.lr_scheduler is not None:
+            assert self.hparams.lr_scheduler_params is not None, "You must provide the scheduler params"
+            # We get the scheduler and params from the hparams
+            lr_scheduler_class = getattr(torch.optim.lr_scheduler, self.hparams.lr_scheduler)
+            lr_scheduler = lr_scheduler_class(optimizer, **self.hparams.lr_scheduler_params)
+
+            return [optimizer], [{
+                'scheduler': lr_scheduler,
+                'interval': self.hparams.lr_scheduler_interval,
+                'monitor': self.hparams.lr_scheduler_monitor
+            }]
+
+        else:
+            return optimizer

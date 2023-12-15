@@ -2,3 +2,11 @@ _target_: models.BiEncoder
 pool_image: false
 lr: 1e-5
 optimizer: Lion8bit
+lr_scheduler: ReduceLROnPlateau
+lr_scheduler_params:
+  mode: min
+  factor: 0.5
+  patience: 3
+  verbose: true
+lr_scheduler_monitor: val/loss
+lr_scheduler_interval: epoch
