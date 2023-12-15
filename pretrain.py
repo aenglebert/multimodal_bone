@@ -71,6 +71,9 @@ def main(cfg: DictConfig):
                 datamodule=datamodule,
                 )
 
+    # load the best model
+    model.load_state_dict(torch.load(trainer.checkpoint_callback.best_model_path)["state_dict"])
+
     # Save the model in the output directory with the project name and current date and time
     output_path = Path(cfg.output_dir)
     timedate = time.strftime("%Y-%m-%d_%H-%M-%S")
