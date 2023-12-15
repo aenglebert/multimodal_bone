@@ -146,6 +146,7 @@ class WdsDocRxDataModule(LightningDataModule):
         self.collate_fn = StudyCollator(text_tokenizer,
                                         mlm=mlm,
                                         mlm_probability=mlm_probability,
+                                        sep_sentences=True,
                                         )
 
     def prepare_data(self):

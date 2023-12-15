@@ -2,6 +2,27 @@ import torch
 
 from transformers import DataCollatorWithPadding, DataCollatorForLanguageModeling
 
+import re
+
+
+def rx_sep_sequences(text, sep_token="[SEP]"):
+    # Remove the empty "[...]" that appears in radiology reports
+    text = " ".join([sentence for sentence in text.split("[...]") if len(sentence.split(" ")) > 1])
+
+    # We want to keep the "?", so we add a point as delimiter
+    text = "?.".join(text.split("?"))
+
+    # Regex to split with points and exclamation marks, ignoring points preceding a number (for deciamles and dates).
+    sentence_delimiter_pattern = '[\.!](?!\d|\/)'
+
+    # Split the text using the regex pattern
+    sentences = re.split(sentence_delimiter_pattern, text)
+
+    # Ignore empty conclusions
+    sentences = [sentence for sentence in sentences if len("".join(sentence.split("Conclusion :"))) > 3]
+
+    return sep_token.join(sentences)
+
 
 class StudyCollator:
     def __init__(self,
@@ -11,6 +32,7 @@ class StudyCollator:
                  padding="longest",
                  mlm=False,
                  mlm_probability=0.15,
+                 sep_sentences=False,
                  ):
         """
         Args:
@@ -25,6 +47,8 @@ class StudyCollator:
         self.pad_to_multiple_of = pad_to_multiple_of
         self.return_tensors = return_tensors
         self.padding = padding
+
+        self.sep_sentences = sep_sentences
 
         if mlm:
             self.mlm = True
@@ -70,6 +94,9 @@ class StudyCollator:
 
             images_list_of_list.append(image_list)
             seq_sizes.append(len(image_list))
+
+            if self.sep_sentences:
+                text = rx_sep_sequences(text, sep_token=self.tokenizer.sep_token)
 
             text_list.append(text)
 
