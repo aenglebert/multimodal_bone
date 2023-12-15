@@ -13,6 +13,7 @@ class BiEncoder(LightningModule):
                  global_loss_fn=ClipLoss(),
                  local_loss_fn=None,
                  optimizer="AdamW",
+                 sep_token_id=None,
                  lr=1e-5,
                  **kwargs):
         super().__init__()
@@ -26,6 +27,7 @@ class BiEncoder(LightningModule):
         self.global_loss_fn = global_loss_fn
         self.local_loss_fn = local_loss_fn
         self.optimizer = optimizer
+        self.sep_token_id = sep_token_id
 
     def common_step(self, batch, batch_idx):
         input_ids = batch["input_ids"] if "input_ids" in batch else None
