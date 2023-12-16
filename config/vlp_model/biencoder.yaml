@@ -1,6 +1,7 @@
 _target_: models.BiEncoder
 pool_image: false
 lr: 1e-5
+weight_decay: 0.1
 optimizer: Lion8bit
 lr_scheduler: ReduceLROnPlateau
 lr_scheduler_params:

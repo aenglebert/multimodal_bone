@@ -20,6 +20,7 @@ class BiEncoder(LightningModule):
                  lr_scheduler_monitor="val/loss",
                  freeze_text_model_first_layers=0,
                  lr=1e-5,
+                 weight_decay=1e-5,
                  scheduler_params=None,
                  **kwargs):
         super().__init__()
@@ -114,7 +115,11 @@ class BiEncoder(LightningModule):
         return loss
 
     def configure_optimizers(self):
-        optimizer = optimizer_dict[self.optimizer](self.parameters(), lr=self.hparams.lr)
+        optimizer = optimizer_dict[self.optimizer](self.parameters(),
+                                                   lr=self.hparams.lr,
+                                                   weight_decay=self.hparams.weight_decay,
+                                                   )
+
         # Freeze embedding layer and first layers of the text model
         if self.hparams.freeze_text_model_first_layers > 0:
             self.text_model.embeddings.requires_grad_(False)
