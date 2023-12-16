@@ -87,6 +87,9 @@ def main(cfg: DictConfig):
     model.text_model.save_pretrained(text_encoder_path)
     tokenizer.save_pretrained(text_encoder_path)
 
+    # Log path to the saved model
+    wandb_logger.log_hyperparams({"model_output_path": str(output_path)})
+
 
 if __name__ == "__main__":
     main()
