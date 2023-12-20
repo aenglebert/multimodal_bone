@@ -1,0 +1,9 @@
+encoder:
+  _target_: models.modeling_vitxrs.ViTXRSModel.from_pretrained
+  _args_:
+    - "vit_b32_448"
+  config:
+    _target_: models.modeling_vitxrs.ViTXRSConfig.from_pretrained
+    _args_:
+      - "vit_b32_448"
+    seq_model: false
