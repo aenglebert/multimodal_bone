@@ -1,8 +1,8 @@
 defaults:
   - trainer: default
   - dataset: lightning_wds_paired_single
-  - image_transform: convirt_448
-  - vision_model: biomed_vit_xrs
+  - image_transform: convirt_224
+  - vision_model: vit_b16_224
   - text_model: dr_bert
   - vlp_model: biencoder
   - _self_
