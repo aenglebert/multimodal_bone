@@ -65,8 +65,6 @@ def create_wds_ortho_docs_rx(data_dir,
         for image_key in images_keys:
             nparr = np.frombuffer(sample[image_key], np.uint8)
             img_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            # Convert from [0, 255] to [0, 1]
-            img_np = img_np / 255.0
 
             images.append(image_transform(image=img_np)['image'])
 
