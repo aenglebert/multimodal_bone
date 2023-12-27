@@ -12,7 +12,7 @@ test_size: 0.1
 num_proc: 16
 batch_size: 4
 project_name: "ortho_vlp"
-experiment_name: "pretrain"
+experiment_name: ${hydra:runtime.choices.vision_model}-${hydra:runtime.choices.text_model}
 
 logging_steps: 100
 output_dir: "./output"
