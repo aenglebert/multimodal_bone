@@ -1,0 +1,13 @@
+encoder:
+  _target_: models.modeling_proj_camembert.ProjCamembertModel.from_pretrained
+  _args_:
+    - cambridgeltl/SapBERT-UMLS-2020AB-all-lang-from-XLMR
+  config:
+    _target_: models.modeling_proj_camembert.ProjCamembertConfig.from_pretrained
+    _args_:
+      - cambridgeltl/SapBERT-UMLS-2020AB-all-lang-from-XLMR
+
+tokenizer:
+  _target_: transformers.AutoTokenizer.from_pretrained
+  _args_:
+      - cambridgeltl/SapBERT-UMLS-2020AB-all-lang-from-XLMR
