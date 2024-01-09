@@ -28,12 +28,15 @@ class ViTXRSConfig(ViTConfig):
                  seq_model=False,
                  mask_ratio=0,
                  projection_size=512,
+                 logit_scale_init_value=2.6592,
                  **kwargs):
         super().__init__(**kwargs)
 
         self.seq_model = seq_model
         self.mask_ratio = mask_ratio
         self.projection_size = projection_size
+        self.logit_scale = logit_scale_init_value
+        self.logit_bias = -10.0
 
 
 class ViTXRSMAEConfig(ViTXRSConfig):
@@ -166,6 +169,9 @@ class ViTXRSModel(ViTModel):
         self.pooler = GatedAttentionPool1d(config) if config.seq_model else None
 
         self.projection = nn.Linear(config.hidden_size, config.projection_size)
+
+        self.logit_scale = nn.Parameter(torch.tensor(self.config.logit_scale))
+        self.logit_bias = nn.Parameter(torch.tensor(self.config.logit_bias))
 
         # Initialize weights and apply final processing
         self.post_init()

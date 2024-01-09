@@ -97,6 +97,9 @@ class BiEncoder(LightningModule):
         # Compute global similarity
         global_sim = torch.matmul(images_global_proj, text_global_proj.T)
 
+        # Scale and bias the similarity
+        global_sim = global_sim * self.vision_model.logit_scale.exp() + self.vision_model.logit_bias
+
         # Compute global loss
         global_loss = self.global_loss_fn(global_sim)
 
