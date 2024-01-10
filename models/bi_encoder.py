@@ -110,6 +110,8 @@ class BiEncoder(LightningModule):
     def training_step(self, batch, batch_idx):
         loss = self.common_step(batch, batch_idx)
         self.log('train/loss', loss)
+        self.log("train/bias", self.vision_model.logit_bias)
+        self.log("train/logit_scale", self.vision_model.logit_scale.exp())
         return loss
 
     def validation_step(self, batch, batch_idx):
