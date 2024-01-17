@@ -1,0 +1,14 @@
+encoder:
+  _target_: models.modeling_proj_camembert.ProjCamembertModel.from_pretrained
+  _args_:
+    - studio-ousia/mluke-base
+  base_model_prefix: luke
+  config:
+    _target_: models.modeling_proj_camembert.ProjCamembertConfig.from_pretrained
+    _args_:
+      - studio-ousia/mluke-base
+
+tokenizer:
+  _target_: transformers.AutoTokenizer.from_pretrained
+  _args_:
+      - studio-ousia/mluke-base
