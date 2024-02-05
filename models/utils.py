@@ -16,20 +16,23 @@ optimizer_dict = {
 
 
 class SigLIPLoss(nn.Module):
-    def __init__(self, temperature: float = 10.0, bias: float = -10.0):
+    def __init__(self, temperature: float = 1.0):
         super().__init__()
-        self.temperature = nn.Parameter(torch.tensor(temperature))
-        self.bias = nn.Parameter(torch.tensor(bias))
+        self.temperature = temperature
 
     def forward(self, similarity: torch.Tensor, targets=None) -> torch.Tensor:
-        logits = similarity * self.temperature + self.bias
-        n = len(logits)
+        return siglip_loss(similarity, targets, self.temperature)
 
-        if targets is None:
-            targets = torch.eye(n, device=logits.device)
 
-        labels = 2 * targets - 1
-        return -torch.sum(nn.functional.logsigmoid(labels * logits)) / n
+def siglip_loss(similarity: torch.Tensor, targets: torch.Tensor, temperature: float = 1.0) -> torch.Tensor:
+    logits = similarity / temperature
+    n = len(logits)
+
+    if targets is None:
+        targets = torch.eye(n, device=logits.device)
+
+    labels = 2 * targets - 1
+    return -torch.sum(nn.functional.logsigmoid(labels * logits)) / n
 
 
 def contrastive_loss(logits: torch.Tensor) -> torch.Tensor:
