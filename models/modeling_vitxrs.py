@@ -270,9 +270,13 @@ class ViTXRSModel(ViTModel):
         Load the model from `model_name_or_path` and resize the patch embeddings to `new_patch_size`.
         args:
             model_name_or_path: model name or path
-            new_patch_size: new patch size (height, width)
+            new_patch_size: new patch size (height, width), or int if the patch is square
             kwargs: additional parameters to pass to the model's `from_pretrained` method
         """
+        # check if new_patch_size is an int
+        if isinstance(new_patch_size, int):
+            new_patch_size = (new_patch_size, new_patch_size)
+
         model = cls.from_pretrained(model_name_or_path, **kwargs)
         config = model.config
         new_config = config
