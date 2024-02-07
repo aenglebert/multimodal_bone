@@ -1,3 +1,4 @@
+import os
 from typing import Dict, List, Optional, Set, Tuple, Union
 
 import math
@@ -12,8 +13,10 @@ from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_outputs import BaseModelOutputWithPooling, BaseModelOutput, ModelOutput
 from transformers.configuration_utils import PretrainedConfig
 
-from transformers.models.vit.modeling_vit import ViTAttention, ViTIntermediate, ViTOutput, ViTEmbeddings, ViTPooler
+from transformers.models.vit.modeling_vit import ViTEmbeddings, ViTPatchEmbeddings
 from transformers.models.vit_mae.modeling_vit_mae import ViTMAEEmbeddings, ViTMAEDecoder, ViTMAEEncoder
+
+from .utils import pi_resize_patch_embed
 
 AUTO_MAP = {
     "AutoModel": "modeling_vitxrs.ViTXRSModel",
@@ -257,6 +260,40 @@ class ViTXRSModel(ViTModel):
 
         # Initialize weights and apply final processing
         self.post_init()
+
+    @classmethod
+    def from_pretrained_pi_resize_patch_embed(cls,
+                                              model_name_or_path,
+                                              new_patch_size,
+                                              **kwargs):
+        """
+        Load the model from `model_name_or_path` and resize the patch embeddings to `new_patch_size`.
+        args:
+            model_name_or_path: model name or path
+            new_patch_size: new patch size (height, width)
+            kwargs: additional parameters to pass to the model's `from_pretrained` method
+        """
+        model = cls.from_pretrained(model_name_or_path, **kwargs)
+        config = model.config
+        new_config = config
+        new_config.encoder_stride = new_patch_size
+        new_config.image_size = config.image_size // config.patch_size * new_patch_size
+        new_config.patch_size = new_patch_size
+
+        new_patch_embeddings = ViTPatchEmbeddings(config=new_config)
+        old_patch_embeddings = model.embeddings.patch_embeddings
+
+        new_patch_embeddings.projection.weight = torch.nn.Parameter(
+            pi_resize_patch_embed(old_patch_embeddings.projection.weight, new_patch_size)
+        )
+        new_patch_embeddings.projection.bias = old_patch_embeddings.projection.bias
+
+        model.embeddings.patch_embeddings = new_patch_embeddings
+
+        model.config = new_config
+
+        return model
+
 
     def forward(
         self,
