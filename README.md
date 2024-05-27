@@ -27,6 +27,8 @@ patient2_study3.2.jpg
 ```
 Confer [webdataset documentation](https://webdataset.github.io/webdataset/) on how to create shards for your own dataset.
 
+The process of curating our dataset is described in the Dataset_creation.pdf file.
+
 ## Training
 
 To launch the VLP process, use the pretrain.py script
