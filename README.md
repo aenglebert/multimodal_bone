@@ -27,7 +27,7 @@ patient2_study3.2.jpg
 ```
 Confer [webdataset documentation](https://webdataset.github.io/webdataset/) on how to create shards for your own dataset.
 
-The process of curating our dataset is described in the Dataset_creation.pdf file.
+The process of curating our dataset is described in the [Dataset_creation.pdf](https://github.com/aenglebert/multimodal_bone/blob/master/Dataset_creation.pdf) file.
 
 ## Training
 
