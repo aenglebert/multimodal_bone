@@ -1,10 +1,10 @@
-# VLP training scripts for Self-supervised Vision-Language Deep Learning for Bone Radiography Analysis
-
-(Paper available soon)
+# VLP training scripts for Self-supervised vision-langage alignment of deep learning representations for bone X-rays analysis
 
 ## Installation
 
 Install requirements with `pip install -r requirements.txt`
+
+You can find pretrained models from the paper [here](https://orthovlp.aenglecloud.com/)
 
 ## Configuration
 
